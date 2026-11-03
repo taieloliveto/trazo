@@ -56,6 +56,7 @@ function applyTheme() {
 applyTheme();
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ((L.theme || 'auto') === 'auto') applyTheme(); }); } catch (_) {}
 
+let full = false;               // roadmap en pantalla completa
 let view = 'auth', sheet = null, busy = false, st = 'ok', rev = 0, curP = '', onb = -1, dragging = false, installEvt = null;
 let authMode = 'login', authErr = '', authEmail = S.email, authPass = '', authName = '';
 const D = () => S.data;
@@ -210,6 +211,8 @@ const I_GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const I_DOTS = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
 const I_LINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>';
 const I_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/></svg>';
+const I_EXPAND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+const I_SHRINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
 const I_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 const EMOS = ['🧭', '🚀', '📦', '🛠️', '📣', '💡', '📊', '🎯', '🧩', '🗂️', '🏗️', '📱', '💬', '🔧', '🌱', '⭐'];
 const COLN = { gray: 'Gris', orange: 'Naranja', teal: 'Turquesa', purple: 'Violeta', pink: 'Rosa', blue: 'Celeste', yellow: 'Amarillo', green: 'Verde', red: 'Rojo', forest: 'Verde oscuro', navy: 'Azul', brown: 'Marrón' };
@@ -259,10 +262,10 @@ function projCard(p) {
   const done = is.filter(isDone).length;
   const next = is.filter(i => i.dl && i.dl >= today() && !isDone(i)).sort((a, b) => a.dl.localeCompare(b.dl))[0];
   const bars = sts.map(s => { const n = is.filter(i => i.st === s.id).length; return n ? `<i class="c-${s.col}" style="width:${n / tot * 100}%" title="${esc(s.n)}: ${n}"></i>` : ''; }).join('');
-  return `<button class="pcard" data-a="openp" data-id="${esc(p.id)}"><span class="pe" aria-hidden="true">${esc(p.e || '📁')}</span><b>${esc(p.n)}</b>
+  return `<div class="pcw"><button class="pcard" data-a="openp" data-id="${esc(p.id)}"><span class="pe" aria-hidden="true">${esc(p.e || '📁')}</span><b>${esc(p.n)}</b>
 <small>${is.length} ${is.length === 1 ? 'iniciativa' : 'iniciativas'} · ${ts.length} ${ts.length === 1 ? 'equipo' : 'equipos'}${is.length ? ` · ${done} ${done === 1 ? 'terminada' : 'terminadas'}` : ''}</small>
 <span class="sbar" aria-hidden="true">${bars}</span>
-<small class="nx">${next ? `Próximo deadline: <b>${esc(dm(next.dl))}</b> · ${esc(next.n)}` : 'Sin deadlines próximos'}</small></button>`;
+<small class="nx">${next ? `Próximo deadline: <b>${esc(dm(next.dl))}</b> · ${esc(next.n)}` : 'Sin deadlines próximos'}</small></button><button class="icon pcm" data-a="pcmenu" data-id="${esc(p.id)}" aria-label="Opciones de ${esc(p.n)}">${I_DOTS}</button></div>`;
 }
 
 /* ---------- Proyecto ---------- */
@@ -271,7 +274,7 @@ const tabOf = p => L.tab[p.id] || 'inits';
 function vProject() {
   const p = P(); if (!p) return '';
   const t = tabOf(p), cnt = { inits: initsOf(p.id).length, teams: teamsOf(p.id).length };
-  return `<div class="page ${t === 'plan' ? 'wide' : ''}"><div class="ph pj"><div class="pt"><span class="pem" aria-hidden="true">${esc(p.e || '📁')}</span><h1>${esc(p.n)}</h1><button class="icon" data-a="pmenu" aria-label="Opciones del proyecto">${I_DOTS}</button></div>
+  return `<div class="page ${t === 'plan' ? 'wide' : ''}"><div class="ph pj"><h1 class="vh">${esc(p.n)}</h1>
 <div class="tabs" role="tablist" aria-label="Secciones del proyecto">${TABS.map(([k, n]) => `<button role="tab" data-a="ptab" data-t="${k}" aria-selected="${t === k}">${n}${cnt[k] !== undefined ? ` <span class="cn">${cnt[k]}</span>` : ''}</button>`).join('')}</div></div>
 ${t === 'inits' ? shellInits(p) : t === 'plan' ? shellPlan(p) : ''}<div id="body"></div></div>`;
 }
@@ -331,6 +334,7 @@ function shellPlan(p) {
 <div class="navm"><button class="icon sm" data-a="rmnav" data-v="-1" aria-label="Mes anterior">‹</button><button class="mini" data-a="rmtoday">Hoy</button><button class="icon sm" data-a="rmnav" data-v="1" aria-label="Mes siguiente">›</button><b>${cap(ymLabel(T.vs))} – ${ymLabel(T.endM)}</b></div>
 <label class="sel">Ver <select data-ch="vn" aria-label="Meses visibles">${[1, 2, 3, 4, 6, 9, 12].map(n => `<option value="${n}"${n === T.vn ? ' selected' : ''}>${n} ${n === 1 ? 'mes' : 'meses'}</option>`).join('')}</select></label>
 <span class="grow"></span>
+<button class="mini full" data-a="full" aria-pressed="${full}">${full ? I_SHRINK + ' Salir de pantalla completa' : I_EXPAND + ' Pantalla completa'}</button>
 <div class="segs" role="group" aria-label="Agrupar por"><button data-a="gb" data-v="i" aria-pressed="${p.gb !== 't'}">Por iniciativa</button><button data-a="gb" data-v="t" aria-pressed="${p.gb === 't'}">Por equipo</button></div></div>
 <div class="legend">${ts.length ? ts.map(t => chip(t.n, t.col)).join('') : '<span class="mut small">Todavía no hay equipos.</span>'}<button class="lnk" data-a="ptab" data-t="teams">${ts.length ? 'Gestionar equipos' : '+ Agregar equipos o personas'}</button>
 <span class="grow"></span><span class="hint">Arrastrá sobre una fila para crear un plazo · arrastrá un plazo para moverlo · tirá de sus bordes para cambiar la duración</span></div>`;
@@ -444,11 +448,23 @@ function paint() {
 function render() {
   const V = { auth: vAuth, projects: vProjects, project: vProject, set: vSet };
   $('#v').innerHTML = (V[view] || vProjects)();
+  if (full && !(view === 'project' && P() && tabOf(P()) === 'plan')) setFull(false, true);
+  document.body.classList.toggle('rmfull', full);
   $('#v').className = 'v-' + view;
   paintHeader(); paint(); renderSheet();
   if (view !== 'auth' && !L.onb && onb < 0) onb = 0;
   paintOnb();
 }
+function setFull(on, quiet) {
+  full = !!on;
+  document.body.classList.toggle('rmfull', full);
+  try {
+    if (full && !document.fullscreenElement && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+    if (!full && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  } catch (_) {}
+  if (!quiet) { scrollKeep = null; render(); }
+}
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && full) setFull(false); });
 function go(v) { view = v; sheet = null; render(); window.scrollTo(0, 0); }
 function openProject(id) {
   if (!proj(id)) return;
@@ -531,7 +547,7 @@ function sheetHtml() {
     case 'ask': return `<div class="sh" role="dialog" aria-modal="true" aria-label="${esc(s.msg)}"><h2>${esc(s.msg)}</h2>${s.sub ? `<p class="mut">${esc(s.sub)}</p>` : ''}<button class="btn dangerf" data-a="yes">${esc(s.yes || 'Sí, eliminar')}</button><button class="btn ghost" data-a="close">Cancelar</button></div>`;
     case 'newproj': return projForm('Nuevo proyecto', '', '🧭', 'Crear proyecto');
     case 'editproj': return projForm('Editar proyecto', p?.n || '', p?.e || '', 'Guardar');
-    case 'pswitch': return `<div class="sh" role="dialog" aria-modal="true" aria-label="Cambiar de proyecto"><h2>Proyectos</h2>${projects().map(x => `<button class="rowb" data-a="openp" data-id="${esc(x.id)}"><span>${nm(x)}</span>${x.id === curP ? '<span class="ck">✓</span>' : ''}</button>`).join('')}<button class="rowb acc" data-a="newproj">+ Nuevo proyecto</button><button class="rowb" data-a="go" data-v="projects">Ver todos los proyectos</button></div>`;
+    case 'pswitch': return `<div class="sh" role="dialog" aria-modal="true" aria-label="Cambiar de proyecto"><h2>Proyectos</h2>${projects().map(x => `<button class="rowb" data-a="openp" data-id="${esc(x.id)}"><span>${nm(x)}</span>${x.id === curP ? '<span class="ck">✓</span>' : ''}</button>`).join('')}<button class="rowb acc" data-a="newproj">+ Nuevo proyecto</button><button class="rowb" data-a="go" data-v="projects">Ver todos los proyectos</button><button class="rowb" data-a="pmenu">Opciones de este proyecto…</button></div>`;
     case 'pmenu': return `<div class="sh" role="dialog" aria-modal="true" aria-label="Opciones del proyecto"><h2>${p ? nm(p) : 'Proyecto'}</h2><button class="rowb" data-a="pedit">Editar nombre y emoji</button><button class="rowb" data-a="states">Editar estados</button><button class="rowb" data-a="csv">Exportar iniciativas (Excel / CSV)</button><button class="rowb dng" data-a="pdel">Eliminar proyecto</button></div>`;
     case 'init': return initSheet();
     case 'block': return blockSheet();
@@ -562,7 +578,7 @@ function renderSheet() {
 }
 function openSheet(s) { sheet = s; renderSheet(); }
 /* Cerrar vuelve a la ventana anterior si la hay (por ejemplo, de un plazo a su iniciativa). */
-function closeSheet() { sheet = sheet && sheet.back ? sheet.back : null; renderSheet(); if (!sheet) paint(); }
+function closeSheet() { sheet = sheet && sheet.back ? sheet.back : null; renderSheet(); if (!sheet) { if (view === 'projects') render(); else paint(); } }
 function markEmo() { const v = ($('#se') || {}).value || ''; $$('.egrid button[data-e]').forEach(b => { if (b.dataset.e) b.setAttribute('aria-pressed', String(b.dataset.e === v)); }); }
 function toast(msg, label, fn) {
   const root = $('#t-root'); root.innerHTML = '';
@@ -708,7 +724,7 @@ document.addEventListener('pointerup', e => endDrag(e));
 document.addEventListener('pointercancel', e => endDrag(e, true));
 /* Teclado: flechas mueven el plazo un día; Mayús + flechas cambian el final */
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { if (drag) { endDrag(e, true); return; } if (sheet) { closeSheet(); return; } if (onb >= 0) { closeOnb(); return; } }
+  if (e.key === 'Escape') { if (drag) { endDrag(e, true); return; } if (sheet) { closeSheet(); return; } if (onb >= 0) { closeOnb(); return; } if (full) { setFull(false); return; } }
   const blk = e.target.closest?.('.blk'); if (!blk || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
   e.preventDefault();
   const b = D().blocks[blk.dataset.b]; if (!b) return;
@@ -786,6 +802,8 @@ const A = {
   openp(b) { sheet = null; openProject(b.dataset.id); },
   pswitch() { openSheet({ t: 'pswitch' }); },
   pmenu() { openSheet({ t: 'pmenu' }); },
+  pcmenu(b) { if (!proj(b.dataset.id)) return; curP = b.dataset.id; openSheet({ t: 'pmenu' }); },
+  full() { setFull(!full); },
   pedit() { openSheet({ t: 'editproj' }); },
   pdel() {
     const p = P(); if (!p) return;

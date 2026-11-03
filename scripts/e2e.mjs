@@ -88,6 +88,7 @@ await step('crear el primer proyecto desde la introducción', async () => {
   assert.equal(p.n, 'Roadmap Q4'); assert.equal(p.e, '🚀');
   assert.deepEqual(live(d.states).sort((a, b) => a.o - b.o).map(s => s.n), ['Por hacer', 'En curso', 'Finalizado', 'Bloqueado']);
   assert.equal(await page.textContent('.psw .pn'), '🚀Roadmap Q4');
+  assert.equal(await page.locator('.pj h1.vh').count(), 1, 'el título grande ya no se ve');
 });
 const add = async (name, dl, st, pr) => {
   await page.fill('#ain', name);
@@ -260,6 +261,34 @@ await step('agrupar por equipo', async () => {
   await shot(page, '12-roadmap-por-equipo');
   await page.click('[data-a=gb][data-v=i]');
 });
+await step('roadmap en pantalla completa', async () => {
+  await page.click('[data-a=full]');
+  await page.waitForSelector('body.rmfull');
+  assert.ok(!(await page.isVisible('#hd')) && !(await page.isVisible('.tabs')));
+  const h = (await page.locator('#rm').boundingBox()).height;
+  assert.ok(h > 700, 'el roadmap ocupa la pantalla: ' + h);
+  await shot(page, '12b-pantalla-completa');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('body:not(.rmfull)');
+  assert.ok(await page.isVisible('#hd'));
+});
+await step('editar el proyecto desde la vista de proyectos', async () => {
+  await page.click('.brand');
+  await page.click('.pcw [data-a=pcmenu]');
+  await page.click('[data-a=pedit]');
+  await page.fill('#sn', 'Célula Fulfillment');
+  await page.click('#sf button[type=submit]');
+  await page.waitForSelector('.pcard:has-text("Célula Fulfillment")');
+  await page.click('.pcw [data-a=pcmenu]');
+  await page.click('.sh [data-a=states]');
+  await page.waitForSelector('.sh .tge');
+  await page.click('.sh [data-a=close]');
+  await page.waitForSelector('.ov', { state: 'detached' });
+  await shot(page, '12c-proyectos-menu');
+  assert.equal(live((await data(page)).projects)[0].n, 'Célula Fulfillment');
+  await page.click('.pcard');
+  await page.click('[data-a=ptab][data-t=plan]');
+});
 await step('se guarda en el servidor y aparece en otro dispositivo', async () => {
   await page.waitForFunction(() => document.querySelector('.sy')?.classList.contains('ok'), null, { timeout: 8000 });
   const c2 = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'es-AR', timezoneId: 'America/Buenos_Aires' });
@@ -343,7 +372,8 @@ await step('eliminar iniciativa con deshacer, y exportar', async () => {
   assert.equal(await page.locator('.itr').count(), 3);
   await page.click('#t button');
   assert.equal(await page.locator('.itr').count(), 4);
-  await page.click('[data-a=pmenu]');
+  await page.click('.brand');
+  await page.click('.pcw [data-a=pcmenu]');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-a=csv]')]);
   const csv = readFileSync(await dl.path(), 'utf8');
   assert.ok(csv.includes('Rediseño estructural GDA') && csv.includes('Desarrollo (IMPLE)'));

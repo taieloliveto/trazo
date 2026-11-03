@@ -215,7 +215,7 @@ label.f input,label.f select,label.f textarea{margin-top:6px;font-weight:400}
 .legend .lnk{margin-left:4px}
 .hint{color:var(--mut);font-size:.8rem}
 @media(hover:none){.hint{display:none}}
-.rm{--lh:34px;position:relative;overflow:auto;max-height:calc(100dvh - 300px);min-height:220px;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:var(--shadow);overscroll-behavior:contain}
+.rm{--lh:34px;position:relative;overflow:auto;max-height:calc(100dvh - 240px);min-height:220px;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:var(--shadow);overscroll-behavior:contain}
 .rmi{position:relative;min-width:100%}
 .rh{position:sticky;top:0;z-index:5;overflow:visible;display:flex;background:var(--card);border-bottom:1px solid var(--line)}
 .rl{position:sticky;left:0;z-index:3;flex:none;width:var(--lw);background:var(--card);border-right:1px solid var(--line)}
@@ -397,3 +397,21 @@ body.inonb{overflow:hidden}
 @media(prefers-reduced-motion:reduce){*:not(.boot){animation:none!important;transition:none!important}}
 
 @media(max-width:560px){.v-project~* .brand b,.brand b{display:none}.sy{font-size:0;gap:0}.psw{max-width:none;flex:1}.crumb{display:none}.hd-in{gap:6px}}
+
+/* Título del proyecto solo para lectores de pantalla (el nombre ya está arriba, en el selector) */
+.vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.pj .tabs{margin-top:0}
+/* Tarjetas de proyecto con menú de opciones */
+.pcw{position:relative;display:flex}
+.pcw .pcard{flex:1;min-width:0}
+.pcm{position:absolute;top:10px;right:10px;background:var(--card)}
+.pcm:hover{background:var(--line2)}
+/* Pantalla completa del roadmap */
+.mini.full{display:inline-flex;align-items:center;gap:6px}
+.mini.full svg{width:16px;height:16px}
+body.rmfull{overflow:hidden}
+body.rmfull #hd,body.rmfull .pj{display:none!important}
+body.rmfull .page{height:100dvh;display:flex;flex-direction:column;padding:12px 14px calc(12px + env(safe-area-inset-bottom,0px));padding-top:calc(12px + env(safe-area-inset-top,0px))}
+body.rmfull .legend{margin:8px 0}
+body.rmfull #body{flex:1;min-height:0;display:flex;flex-direction:column}
+body.rmfull .rm{flex:1;max-height:none;height:100%}
