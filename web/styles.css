@@ -73,7 +73,7 @@ p{margin:.4em 0}
 
 /* Páginas */
 #v{width:100%}
-.page{max-width:1120px;margin:0 auto;padding:22px max(18px,env(safe-area-inset-right,0px)) calc(60px + env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-left,0px))}
+.page{max-width:none;margin:0 auto;padding:22px max(18px,env(safe-area-inset-right,0px)) calc(60px + env(safe-area-inset-bottom,0px)) max(18px,env(safe-area-inset-left,0px))}
 .page.wide{max-width:none}
 .page.narrow{max-width:640px}
 .ph{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
