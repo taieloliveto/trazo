@@ -1,0 +1,134 @@
+/* Lógica de datos compartida entre la app y el servidor.
+   FUENTE ÚNICA: shared/merge.js. Después de editarla corré `npm run sync-shared`
+   (copia a web/merge.js y a server/src/merge.js). No edites esas copias a mano.
+
+   Forma de los datos (todo se identifica por id y se combina entidad por entidad; gana el cambio más reciente `u`):
+   {
+     name, nameU,                                   cómo te llamamos
+     projects: { id: { id, n, e, g, vs, vn, gb, o, c, u, del } }
+                  n nombre · e emoji · g granularidad (m mes | q quincena | w semana | d día)
+                  vs primer mes visible 'AAAA-MM' · vn cantidad de meses visibles · gb agrupar por (i iniciativa | t equipo)
+     states:   { id: { id, pr, n, col, dn, o, c, u, del } } estados de un proyecto (editables) · dn cuenta como terminado
+     teams:    { id: { id, pr, n, col, o, c, u, del } }    equipos o personas de un proyecto
+     inits:    { id: { id, pr, n, dl, st, p, ln, no, o, c, u, del } }
+                  iniciativa · dl deadline 'AAAA-MM-DD' · st estado · p prioridad (urg|high|mid|low|'') · ln enlace · no notas
+     blocks:   { id: { id, pr, in, tm, s, e, lb, c, u, del } }
+                  plazo en la planificación: iniciativa `in`, equipo `tm`, del día `s` al día `e` (inclusive), etiqueta `lb`
+     last, lastU                                    último proyecto abierto
+   } */
+
+const DAY = 86400000, TOMB_TTL = 30 * DAY;
+const LIM = { projects: 200, states: 2000, teams: 2000, inits: 5000, blocks: 12000 };
+const idOk = s => typeof s === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(s);
+const str = (s, n) => typeof s === 'string' ? s.slice(0, n) : '';
+const num = x => Number.isFinite(+x) ? +x : 0;
+const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+const ymdOk = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
+const ordN = x => Math.min(1e7, Math.max(0, Math.round(num(x))));
+const COLORS = ['gray', 'orange', 'teal', 'purple', 'pink', 'blue', 'yellow', 'green', 'red', 'forest', 'navy', 'brown'];
+const PRIOS = ['urg', 'high', 'mid', 'low', ''];
+const GRANS = ['m', 'q', 'w', 'd'];
+const ymOk = s => typeof s === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
+const linkOk = s => typeof s === 'string' && /^https?:\/\/\S+$/i.test(s.trim()) ? s.trim().slice(0, 500) : '';
+
+/* Emoji de un proyecto: un solo carácter emoji o vacío. */
+const EMO = /\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]️?⃣/u;
+const isEmoji = g => typeof g === 'string' && g.length > 0 && g.length <= 16 && EMO.test(g);
+function firstEmoji(s) {
+  s = typeof s === 'string' ? s.trim() : '';
+  if (!s) return '';
+  let g;
+  try { const it = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)[Symbol.iterator]().next(); g = it.done ? '' : it.value.segment; }
+  catch (_) { g = Array.from(s)[0] || ''; }
+  return isEmoji(g) ? g : '';
+}
+
+function emptyState() { return { name: '', nameU: 0, projects: {}, states: {}, teams: {}, inits: {}, blocks: {}, last: '', lastU: 0 }; }
+
+const isObj = x => x && typeof x === 'object';
+const col = c => COLORS.includes(c) ? c : 'gray';
+function fixProject(r, id) {
+  if (!isObj(r)) return null;
+  return { id, n: str(r.n, 80).trim() || 'Proyecto', e: firstEmoji(r.e), g: GRANS.includes(r.g) ? r.g : 'w',
+    vs: ymOk(r.vs) ? r.vs : '', vn: Math.min(24, Math.max(1, Math.round(num(r.vn)) || 6)), gb: r.gb === 't' ? 't' : 'i', o: ordN(r.o), c: num(r.c), u: num(r.u), del: !!r.del };
+}
+function fixTag(r, id) {        // estados y equipos tienen la misma forma
+  if (!isObj(r) || !idOk(r.pr)) return null;
+  const del = !!r.del, n = str(r.n, 40).trim();
+  if (!n && !del) return null;
+  return { id, pr: r.pr, n, col: col(r.col), dn: !!r.dn, o: ordN(r.o), c: num(r.c), u: num(r.u), del };
+}
+function fixInit(r, id) {
+  if (!isObj(r) || !idOk(r.pr)) return null;
+  const del = !!r.del, n = str(r.n, 160).trim();
+  if (!n && !del) return null;
+  return {
+    id, pr: r.pr, n, dl: ymdOk(r.dl) ? r.dl : '', st: idOk(r.st) ? r.st : '', p: PRIOS.includes(r.p) ? r.p : '',
+    ln: del ? '' : linkOk(r.ln), no: del ? '' : str(r.no, 2000), o: ordN(r.o), c: num(r.c), u: num(r.u), del
+  };
+}
+function fixBlock(r, id) {
+  if (!isObj(r) || !idOk(r.pr) || !idOk(r.in)) return null;
+  const del = !!r.del;
+  let s = ymdOk(r.s) ? r.s : '', e = ymdOk(r.e) ? r.e : '';
+  if (!s || !e) { if (!del) return null; s = s || '2000-01-01'; e = e || s; }
+  if (e < s) [s, e] = [e, s];
+  return { id, pr: r.pr, in: r.in, tm: idOk(r.tm) ? r.tm : '', s, e, lb: str(r.lb, 30).trim(), c: num(r.c), u: num(r.u), del };
+}
+
+/* Aplica `fix` a cada entrada, descarta tumbas viejas y acota la cantidad (se queda con lo más reciente). */
+function pruneMap(src, max, now, fix) {
+  const out = {};
+  if (!isObj(src)) return out;
+  let arr = [];
+  for (const id of Object.keys(src).slice(0, max * 2)) {
+    if (!idOk(id)) continue;
+    const e = fix(src[id], id);
+    if (!e) continue;
+    if (e.del && e.u < now - TOMB_TTL) continue;
+    arr.push(e);
+  }
+  if (arr.length > max) { arr.sort((a, b) => (a.del - b.del) || b.u - a.u); arr = arr.slice(0, max); }
+  for (const e of arr) out[e.id] = e;
+  return out;
+}
+
+/* Limpia y acota cualquier dato que venga de afuera (disco, red, otro dispositivo). */
+function sanitizeState(d, now) {
+  now = now || Date.now();
+  const out = emptyState();
+  if (!isObj(d)) return out;
+  out.name = str(typeof d.name === 'string' ? d.name.trim() : '', 30);
+  out.nameU = num(d.nameU);
+  out.projects = pruneMap(d.projects, LIM.projects, now, fixProject);
+  out.states = pruneMap(d.states, LIM.states, now, fixTag);
+  out.teams = pruneMap(d.teams, LIM.teams, now, fixTag);
+  out.inits = pruneMap(d.inits, LIM.inits, now, fixInit);
+  out.blocks = pruneMap(d.blocks, LIM.blocks, now, fixBlock);
+  out.last = idOk(d.last) ? d.last : '';
+  out.lastU = num(d.lastU);
+  return out;
+}
+
+/* ---- Combinación de dos estados: gana el cambio más reciente por entidad ---- */
+function mergeMap(a, b) {
+  const out = {};
+  for (const id of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const x = a[id], y = b[id];
+    out[id] = !x ? y : !y ? x : (x.u >= y.u ? x : y);
+  }
+  return out;
+}
+function mergeState(a, b, now) {
+  a = sanitizeState(a, now);
+  b = sanitizeState(b, now);
+  const out = emptyState();
+  for (const k of ['projects', 'states', 'teams', 'inits', 'blocks']) out[k] = mergeMap(a[k], b[k]);
+  const wl = a.lastU >= b.lastU ? a : b;
+  out.last = wl.last; out.lastU = wl.lastU;
+  const wn = a.nameU >= b.nameU ? a : b;
+  out.name = wn.name; out.nameU = wn.nameU;
+  return sanitizeState(out, now);
+}
+
+export { mergeState, sanitizeState, emptyState, norm, firstEmoji, isEmoji, COLORS, PRIOS, GRANS };

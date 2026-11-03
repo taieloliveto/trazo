@@ -1,0 +1,12 @@
+name = "trazo-server"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Namespace KV propio de esta app. Lo crea scripts/setup-server.sh (o a mano: npx wrangler kv namespace create trazo_kv).
+[[kv_namespaces]]
+binding = "KV"
+id = "REEMPLAZAR_CON_EL_ID_DE_TU_KV"
+
+# Opcional: limitar qué sitio puede usar la API (la URL de tu app en Vercel, sin barra final).
+# [vars]
+# ALLOWED_ORIGIN = "https://tu-app.vercel.app"
