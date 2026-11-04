@@ -5,9 +5,10 @@
    Forma de los datos (todo se identifica por id y se combina entidad por entidad; gana el cambio más reciente `u`):
    {
      name, nameU,                                   cómo te llamamos
-     projects: { id: { id, n, e, g, vs, vn, gb, o, c, u, del } }
+     projects: { id: { id, n, e, g, vs, vn, gb, sh, o, c, u, del } }
                   n nombre · e emoji · g granularidad (m mes | q quincena | w semana | d día)
                   vs primer mes visible 'AAAA-MM' · vn cantidad de meses visibles · gb agrupar por (i iniciativa | t equipo)
+                  sh clave del link público de solo lectura ('' = no compartido)
      states:   { id: { id, pr, n, col, dn, o, c, u, del } } estados de un proyecto (editables) · dn cuenta como terminado
      teams:    { id: { id, pr, n, col, cap, o, c, u, del } } equipos o personas de un proyecto · cap iniciativas en paralelo (0 = 2 por defecto)
      inits:    { id: { id, pr, n, dl, st, p, ln, no, o, c, u, del } }
@@ -18,6 +19,7 @@
                   sprint: del día `s` al día `e` · off días no disponibles (feriados) · goal objetivo
                   ins iniciativas incluidas · cl cerrado · dn iniciativas terminadas al cerrarlo
      last, lastU                                    último proyecto abierto
+     tabs, tabsU                                    orden de las pestañas del proyecto
    } */
 
 const DAY = 86400000, TOMB_TTL = 30 * DAY;
@@ -31,6 +33,8 @@ const ordN = x => Math.min(1e7, Math.max(0, Math.round(num(x))));
 const COLORS = ['gray', 'orange', 'teal', 'purple', 'pink', 'blue', 'yellow', 'green', 'red', 'forest', 'navy', 'brown'];
 const PRIOS = ['urg', 'high', 'mid', 'low', ''];
 const GRANS = ['m', 'q', 'w', 'd'];
+const shOk = s => typeof s === 'string' && /^[A-Za-z0-9]{20,40}$/.test(s);
+const TABKEYS = ['inits', 'plan', 'sprints', 'cur', 'teams', 'dash'];
 const ymOk = s => typeof s === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
 const linkOk = s => typeof s === 'string' && /^https?:\/\/\S+$/i.test(s.trim()) ? s.trim().slice(0, 500) : '';
 
@@ -46,14 +50,14 @@ function firstEmoji(s) {
   return isEmoji(g) ? g : '';
 }
 
-function emptyState() { return { name: '', nameU: 0, projects: {}, states: {}, teams: {}, inits: {}, blocks: {}, sprints: {}, last: '', lastU: 0 }; }
+function emptyState() { return { name: '', nameU: 0, projects: {}, states: {}, teams: {}, inits: {}, blocks: {}, sprints: {}, last: '', lastU: 0, tabs: [], tabsU: 0 }; }
 
 const isObj = x => x && typeof x === 'object';
 const col = c => COLORS.includes(c) ? c : 'gray';
 function fixProject(r, id) {
   if (!isObj(r)) return null;
   return { id, n: str(r.n, 80).trim() || 'Proyecto', e: firstEmoji(r.e), g: GRANS.includes(r.g) ? r.g : 'w',
-    vs: ymOk(r.vs) ? r.vs : '', vn: Math.min(24, Math.max(1, Math.round(num(r.vn)) || 6)), gb: r.gb === 't' ? 't' : 'i', o: ordN(r.o), c: num(r.c), u: num(r.u), del: !!r.del };
+    vs: ymOk(r.vs) ? r.vs : '', vn: Math.min(24, Math.max(1, Math.round(num(r.vn)) || 6)), gb: r.gb === 't' ? 't' : 'i', sh: shOk(r.sh) ? r.sh : '', o: ordN(r.o), c: num(r.c), u: num(r.u), del: !!r.del };
 }
 function fixTag(r, id) {        // estados y equipos tienen la misma forma
   if (!isObj(r) || !idOk(r.pr)) return null;
@@ -122,6 +126,8 @@ function sanitizeState(d, now) {
   out.sprints = pruneMap(d.sprints, LIM.sprints, now, fixSprint);
   out.last = idOk(d.last) ? d.last : '';
   out.lastU = num(d.lastU);
+  out.tabs = Array.isArray(d.tabs) ? [...new Set(d.tabs.filter(k => TABKEYS.includes(k)))] : [];
+  out.tabsU = num(d.tabsU);
   return out;
 }
 
@@ -141,6 +147,8 @@ function mergeState(a, b, now) {
   for (const k of ['projects', 'states', 'teams', 'inits', 'blocks', 'sprints']) out[k] = mergeMap(a[k], b[k]);
   const wl = a.lastU >= b.lastU ? a : b;
   out.last = wl.last; out.lastU = wl.lastU;
+  const wt = a.tabsU >= b.tabsU ? a : b;
+  out.tabs = wt.tabs; out.tabsU = wt.tabsU;
   const wn = a.nameU >= b.nameU ? a : b;
   out.name = wn.name; out.nameU = wn.nameU;
   return sanitizeState(out, now);

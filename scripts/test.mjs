@@ -94,6 +94,28 @@ await ok('sincroniza y combina sin perder cambios', async () => {
   assert.deepEqual(Object.keys(r.body.data.inits).sort(), ['i1', 'i2']);
   assert.equal((await call('/data', 'GET', null, tok)).body.data.projects.p1.n, 'Q4');
 });
+await ok('link público: solo el proyecto compartido, sin cuenta, y se puede revocar', async () => {
+  const tk = 'Abc123Abc123Abc123Abc123';
+  assert.equal((await call('/share', 'POST', { token: tk })).status, 401);
+  assert.equal((await call('/share', 'POST', { token: 'corto' }, tok)).status, 400);
+  assert.equal((await call('/share', 'POST', { token: tk }, tok)).status, 200);
+  assert.equal((await call('/public/' + tk)).status, 404, 'el proyecto todavía no tiene la clave');
+  await call('/data', 'PUT', { data: { projects: { p1: { n: 'Q4', sh: tk, u: T + 5 }, p2: { n: 'Privado', u: T } }, inits: { i3: { pr: 'p2', n: 'Secreto', u: T } } } }, tok);
+  const r = await call('/public/' + tk);
+  assert.equal(r.status, 200); assert.equal(r.body.pr, 'p1');
+  assert.deepEqual(Object.keys(r.body.data.projects), ['p1']);
+  assert.deepEqual(Object.keys(r.body.data.inits).sort(), ['i1', 'i2']);
+  // otra cuenta no puede apropiarse de la clave
+  const o = await call('/signup', 'POST', { email: 'otro@b.co', password: 'contraseña2' });
+  assert.equal((await call('/share', 'POST', { token: tk }, o.body.token)).status, 409);
+  await call('/data', 'PUT', { data: { projects: { p1: { n: 'Q4', sh: '', u: T + 9 } } } }, tok);
+  assert.equal((await call('/public/' + tk)).status, 404);
+  await call('/data', 'PUT', { data: { projects: { p1: { n: 'Q4', sh: tk, u: T + 10 } } } }, tok);
+  assert.equal((await call('/public/' + tk)).status, 200);
+  await call('/share/' + tk, 'DELETE', null, tok);
+  assert.equal((await call('/public/' + tk)).status, 404);
+  await call('/account', 'DELETE', null, o.body.token);
+});
 await ok('eliminar la cuenta borra todo', async () => {
   assert.equal((await call('/account', 'DELETE', null, tok)).status, 200);
   assert.equal((await call('/data', 'GET', null, tok)).status, 401);

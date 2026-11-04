@@ -1,5 +1,5 @@
 // Servidor de Trazo (Cloudflare Worker): cuentas, sesión y sincronización. Mismo esquema que Foco y Compras.
-import { mergeState, sanitizeState } from './merge.js';
+import { mergeState, sanitizeState, shOk } from './merge.js';
 
 const TOKEN_TTL = 60 * 86400;        // las sesiones duran 60 días
 const MAX_BODY = 1500000;            // bytes por sincronización
@@ -91,6 +91,23 @@ export default {
         return j({ token: await makeToken(em, env) });
       }
 
+      /* Link público de solo lectura: devuelve únicamente ese proyecto, si sigue compartido. */
+      if (url.pathname.startsWith('/public/') && req.method === 'GET') {
+        const tok = url.pathname.slice(8);
+        const gone = () => j({ error: 'Este link ya no está disponible' }, 404);
+        if (!shOk(tok)) return gone();
+        const sh = await env.KV.get('share:' + tok);
+        if (!sh) return gone();
+        const { e } = JSON.parse(sh);
+        const raw = await env.KV.get('user:' + e);
+        if (!raw) return gone();
+        const d = sanitizeState(JSON.parse(raw).data);
+        const p = Object.values(d.projects).find(x => x.sh === tok && !x.del);
+        if (!p) return gone();
+        const pick = k => Object.fromEntries(Object.entries(d[k]).filter(([, x]) => x.pr === p.id && !x.del));
+        return j({ pr: p.id, at: Date.now(), data: { projects: { [p.id]: p }, states: pick('states'), teams: pick('teams'), inits: pick('inits'), blocks: pick('blocks'), sprints: pick('sprints') } });
+      }
+
       const email = await verifyToken((req.headers.get('Authorization') || '').replace(/^Bearer /, ''), env);
 
       if (url.pathname === '/data' && req.method === 'GET') {
@@ -118,8 +135,26 @@ export default {
         return j({ data: merged });
       }
 
+      if (url.pathname === '/share' && req.method === 'POST') {
+        if (!email) return j({ error: 'No autenticado' }, 401);
+        const { token } = await req.json();
+        if (!shOk(token)) return j({ error: 'Link inválido' }, 400);
+        const prev = await env.KV.get('share:' + token);
+        if (prev && JSON.parse(prev).e !== email) return j({ error: 'Link inválido' }, 409);
+        if (!prev) await env.KV.put('share:' + token, JSON.stringify({ e: email }));
+        return j({ ok: true });
+      }
+      if (url.pathname.startsWith('/share/') && req.method === 'DELETE') {
+        if (!email) return j({ error: 'No autenticado' }, 401);
+        const tok = url.pathname.slice(7), prev = shOk(tok) && await env.KV.get('share:' + tok);
+        if (prev && JSON.parse(prev).e === email) await env.KV.delete('share:' + tok);
+        return j({ ok: true });
+      }
+
       if (url.pathname === '/account' && req.method === 'DELETE') {
         if (!email) return j({ error: 'No autenticado' }, 401);
+        const raw = await env.KV.get('user:' + email);
+        if (raw) for (const p of Object.values(sanitizeState(JSON.parse(raw).data).projects)) if (p.sh) await env.KV.delete('share:' + p.sh);
         await env.KV.delete('user:' + email);
         return j({ ok: true });
       }

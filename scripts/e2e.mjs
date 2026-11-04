@@ -377,6 +377,81 @@ await step('cerrar sprint y pasar lo pendiente al próximo', async () => {
   assert.equal(live((await data(page)).sprints).find(x => x.n === 'SP 16').cl, false);
   await page.click('[data-a=ptab][data-t=plan]');
 });
+await step('reordenar las pestañas arrastrando', async () => {
+  const keys = async () => page.locator('.tabs [role=tab]').evaluateAll(t => t.map(x => x.dataset.t));
+  const before = await keys();
+  const src = await page.locator('.tabs [data-t=dash]').boundingBox(), dst = await page.locator('.tabs [role=tab]').first().boundingBox();
+  await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2); await page.mouse.down();
+  await page.mouse.move(src.x + src.width / 2 - 20, src.y + src.height / 2, { steps: 3 });
+  await page.mouse.move(dst.x + 5, dst.y + dst.height / 2, { steps: 12 });
+  await page.mouse.up();
+  const after = await keys();
+  assert.equal(after[0], 'dash'); assert.equal(after.length, before.length);
+  assert.equal(await page.locator('.tabs [aria-selected=true]').getAttribute('data-t'), 'plan', 'arrastrar no cambia de pestaña');
+  assert.deepEqual((await data(page)).tabs, after);
+  await page.locator('.tabs [data-t=dash]').focus();
+  await page.keyboard.press('Alt+ArrowRight');
+  assert.equal((await keys())[1], 'dash');
+});
+await step('compartir: link de solo lectura que se actualiza', async () => {
+  await page.click('[data-a=share]');
+  await page.click('[data-a=shon]');
+  await page.waitForSelector('#shl');
+  const link = (await page.inputValue('#shl')).replace(/^https?:\/\/[^/]+\//, APP);
+  assert.match(link, /\?ver=[A-Za-z0-9]{24}$/);
+  await page.click('.sh [data-a=close]');
+  await page.waitForFunction(() => document.querySelector('.sy')?.classList.contains('ok'), null, { timeout: 8000 });
+  const cv = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'es-AR', timezoneId: 'America/Buenos_Aires' });
+  const v = await cv.newPage();
+  v.on('pageerror', e => errors.push(String(e))); v.on('console', m => { if (m.type() === 'error' && !/status of 404/.test(m.text())) errors.push(m.text()); });   // el 404 del link revocado es esperado
+  await v.goto(link);
+  await v.waitForSelector('.rob');
+  assert.equal(await v.locator('#af').count(), 0, 'no pide cuenta');
+  assert.equal(await v.locator('.onb').count(), 0, 'sin introducción');
+  await v.click('.tabs [data-t=inits]');
+  await v.waitForSelector('.itr');
+  assert.equal(await v.locator('.itr').count(), 4);
+  assert.ok(!(await v.isVisible('#addi')) && !(await v.isVisible('.grip')));
+  assert.ok(await v.locator('select[data-ch=st]').first().isDisabled());
+  await v.click('.itn >> nth=0');
+  await v.waitForSelector('.sh');
+  assert.ok(await v.locator('#in').isDisabled()); assert.equal(await v.locator('.sh button[type=submit]:visible').count(), 0);
+  await v.click('.sh [data-a=close]');
+  await v.click('.tabs [data-t=plan]');
+  await v.waitForSelector('.blk');
+  const before = JSON.stringify(live((await data(page)).blocks).map(b => [b.s, b.e]));
+  const bb = await v.locator('.blk').first().boundingBox();
+  await v.mouse.move(bb.x + 20, bb.y + 10); await v.mouse.down(); await v.mouse.move(bb.x + 140, bb.y + 10, { steps: 5 }); await v.mouse.up();
+  await v.waitForTimeout(300);
+  assert.equal(await v.locator('.sh[data-f=block] button[type=submit]:visible').count(), 0, 'no se puede editar el plazo');
+  await v.keyboard.press('Escape');
+  await v.click('[data-a=gran][data-v=d]');      // cambiar la vista sí se puede (solo para quien mira)
+  await v.waitForSelector('#rm.g-d');
+  await v.click('.tabs [data-t=cur]'); await v.waitForSelector('.rep');
+  await v.screenshot({ path: join(SHOTS, '22-compartido-sprint.png'), fullPage: true });
+  // el dueño agrega una iniciativa y el link se actualiza
+  await page.click('.tabs [data-t=inits]');
+  await page.fill('#ain', 'Nueva desde el dueño'); await page.click('#addi button[type=submit]');
+  await page.waitForFunction(() => document.querySelector('.sy')?.classList.contains('ok'), null, { timeout: 8000 });
+  await v.click('.tabs [data-t=inits]');
+  await v.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await v.waitForSelector('.itn:has-text("Nueva desde el dueño")');
+  await v.screenshot({ path: join(SHOTS, '23-compartido-iniciativas.png') });
+  // dejar de compartir
+  await page.click('[data-a=share]');
+  await page.click('[data-a=shoff]'); await page.click('[data-a=yes]');
+  await page.waitForSelector('[data-a=shon]');
+  await page.click('.sh [data-a=close]');
+  await page.waitForFunction(() => document.querySelector('.sy')?.classList.contains('ok'), null, { timeout: 8000 });
+  await v.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await v.waitForSelector('.v-gone');
+  await v.screenshot({ path: join(SHOTS, '24-compartido-cerrado.png') });
+  await cv.close();
+  assert.equal(JSON.stringify(live((await data(page)).blocks).map(b => [b.s, b.e])), before);
+  // la iniciativa de prueba se borra para no alterar los pasos siguientes
+  await page.click('.itn:has-text("Nueva desde el dueño")'); await page.click('[data-a=idel]'); await page.click('[data-a=yes]');
+  await page.click('.tabs [data-t=plan]');
+});
 await step('roadmap en pantalla completa', async () => {
   await page.click('[data-a=full]');
   await page.waitForSelector('body.rmfull');

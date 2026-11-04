@@ -559,3 +559,27 @@ i.tm{background:var(--mut)!important}
 .spb:hover{filter:brightness(.95);text-decoration:underline}
 .spband{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--navy-b) 6%,transparent);border-left:2px solid color-mix(in srgb,var(--navy-b) 40%,transparent);border-right:2px solid color-mix(in srgb,var(--navy-b) 40%,transparent)}
 .sptag{display:inline-block;padding:0 6px;border-radius:5px;background:var(--line2);color:var(--fg);font-weight:700}
+
+/* Compartir */
+.shb{display:inline-flex;align-items:center;gap:6px}
+.shb svg{width:16px;height:16px}
+.shb.on{background:var(--acc-soft);border-color:transparent;color:var(--acc)}
+@media(max-width:560px){.shb span{display:none}.shb{padding:0 9px}}
+.lkrow{display:flex;gap:8px;margin:14px 0 6px}
+.lkrow .in{flex:1;font-size:.9rem}
+.shtag{min-height:20px;font-size:.72rem;margin-top:2px}
+.rob{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;background:var(--acc-soft);color:var(--acc);font-weight:800;font-size:.8rem;white-space:nowrap}
+.rob.sm{font-size:.7rem;padding:2px 8px;vertical-align:middle}
+.psw.ro{cursor:default}
+/* Solo lectura: sin controles de edición */
+.ro .addi,.ro .grip,.ro .tga,.ro [data-a=tgmv],.ro [data-a=tgdel],.ro [data-a=states],.ro [data-a=spnew],.ro [data-a=spclose],.ro [data-a=spreopen],.ro [data-a=iplan],
+.ro .mini[data-a=spedit],.ro .lnk[data-a=spedit],.ro .hint,.ro .legend .lnk,.ro .chc .lnk,.ro [data-a=badd],.ro .sph .btn{display:none!important}
+.ro .rr .rt,.ro .blk{cursor:default}
+.ro .blk .hl,.ro .blk .hr{display:none}
+.ro .tgs:disabled,.ro .in:disabled,.ro .dl:disabled{opacity:1;cursor:default}
+.ro .tgs:disabled{background-image:none;padding-right:12px}
+.ro [data-a=pickcol]{pointer-events:none}
+/* Pestañas que se arrastran */
+.tabs [role=tab]{transition:transform .15s ease;touch-action:pan-y}
+.tabs [role=tab].tlift{transition:none;position:relative;z-index:3;background:var(--card);border-radius:10px 10px 0 0;box-shadow:0 6px 18px rgba(0,0,0,.15)}
+.tabs{overflow-y:hidden}

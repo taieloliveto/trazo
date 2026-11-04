@@ -32,12 +32,16 @@ const ymLabel = ym => { const [y, m] = ym.split('-').map(Number); return `${MON[
 const mondayOf = s => addD(s, -((wday(dn(s)) + 6) % 7));
 
 /* ---------- Estado ---------- */
+/* Link público: ?ver=CLAVE abre el proyecto compartido en solo lectura, sin cuenta y sin tocar la sesión de este navegador. */
+const RO_TOKEN = (() => { try { const v = new URLSearchParams(location.search).get('ver') || ''; return /^[A-Za-z0-9]{20,40}$/.test(v) ? v : ''; } catch (_) { return ''; } })();
+const RO = !!RO_TOKEN;
+if (RO) document.documentElement.classList.add('ro');
 let S = { email: '', token: '', server: '', data: emptyState(), dirty: false };
-try {
+if (!RO) try {
   const r = JSON.parse(localStorage.getItem(KEY) || 'null');
   if (r && typeof r === 'object') { S.email = String(r.email || ''); S.token = String(r.token || ''); S.server = String(r.server || ''); S.dirty = !!r.dirty; S.data = sanitizeState(r.data); }
 } catch (_) {}
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (_) {} };
+const save = () => { if (RO) return; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (_) {} };
 /* Preferencias de este dispositivo (no se sincronizan) */
 let L = { onb: 0, theme: 'auto', tab: {}, sort: {}, flt: {}, lastTeam: {} };
 try { const r = JSON.parse(localStorage.getItem(LKEY) || 'null'); if (r && typeof r === 'object') L = { ...L, ...r }; } catch (_) {}
@@ -56,7 +60,7 @@ function applyTheme() {
 applyTheme();
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ((L.theme || 'auto') === 'auto') applyTheme(); }); } catch (_) {}
 
-let full = false;               // roadmap en pantalla completa
+let full = false, roAt = 0, roErr = '', roGone = '';               // roadmap en pantalla completa
 let view = 'auth', sheet = null, busy = false, st = 'ok', rev = 0, curP = '', onb = -1, dragging = false, installEvt = null;
 let authMode = 'login', authErr = '', authEmail = S.email, authPass = '', authName = '';
 const D = () => S.data;
@@ -152,7 +156,7 @@ function afterRemote() {
   if (view === 'project' && !P()) { go('projects'); return; }
   render();
 }
-function touch() { S.dirty = true; rev++; remoteSig = JSON.stringify(S.data); save(); queueSync(); }
+function touch() { if (RO) { rev++; return; } S.dirty = true; rev++; remoteSig = JSON.stringify(S.data); save(); queueSync(); }
 
 /* ---------- Mutaciones ---------- */
 function put(kind, o) { const id = o.id || uid(), e = { c: stamp(), u: now(), del: false, o: 0, ...o, id }; D()[kind][id] = e; return e; }
@@ -236,6 +240,8 @@ const I_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 const I_EXPAND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
 const I_SHRINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
 const grip = (i) => `<button type="button" class="grip" data-g="${esc(i.id)}" aria-label="Mover «${esc(i.n)}». Arrastrá, o usá las flechas arriba y abajo" title="Arrastrá para ordenar"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>`;
+const I_SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="m8.3 10.8 7.4-4.3M8.3 13.2l7.4 4.3"/></svg>';
+const hm = ms => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const I_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 const EMOS = ['🧭', '🚀', '📦', '🛠️', '📣', '💡', '📊', '🎯', '🧩', '🗂️', '🏗️', '📱', '💬', '🔧', '🌱', '⭐'];
 const COLN = { gray: 'Gris', orange: 'Naranja', teal: 'Turquesa', purple: 'Violeta', pink: 'Rosa', blue: 'Celeste', yellow: 'Amarillo', green: 'Verde', red: 'Rojo', forest: 'Verde oscuro', navy: 'Azul', brown: 'Marrón' };
@@ -249,9 +255,10 @@ function paintHeader() {
   if (view === 'auth') { h.hidden = true; return; }
   h.hidden = false;
   const p = P();
+  if (RO) { h.innerHTML = `<div class="hd-in"><span class="brand"><span class="logo sm">${LOGO}</span><b>Trazo</b></span>${p ? `<span class="crumb" aria-hidden="true">/</span><span class="psw ro"><span class="pn">${nm(p)}</span></span>` : ''}<span class="grow"></span><span class="rob" title="Estás viendo un proyecto compartido. Se actualiza solo.">👁 Solo lectura</span><span class="sy ${roErr ? 'err' : 'ok'}" role="status">${roErr ? 'Sin conexión' : roAt ? 'Actualizado ' + hm(roAt) : 'Cargando…'}</span></div>`; return; }
   h.innerHTML = `<div class="hd-in"><button class="brand" data-a="go" data-v="projects" aria-label="Ir a mis proyectos"><span class="logo sm">${LOGO}</span><b>Trazo</b></button>
 ${view === 'project' && p ? `<span class="crumb" aria-hidden="true">/</span><button class="psw" data-a="pswitch" aria-label="Cambiar de proyecto"><span class="pn">${nm(p)}</span>${I_DOWN}</button>` : ''}
-<span class="grow"></span>${syncBadge()}<button class="icon" data-a="go" data-v="set" aria-label="Ajustes"${view === 'set' ? ' aria-current="page"' : ''}>${I_GEAR}</button></div>`;
+<span class="grow"></span>${view === 'project' && p ? `<button class="mini shb${p.sh ? ' on' : ''}" data-a="share" aria-label="Compartir proyecto">${I_SHARE}<span>${p.sh ? 'Compartido' : 'Compartir'}</span></button>` : ''}${syncBadge()}<button class="icon" data-a="go" data-v="set" aria-label="Ajustes"${view === 'set' ? ' aria-current="page"' : ''}>${I_GEAR}</button></div>`;
 }
 
 /* ---------- Ingreso ---------- */
@@ -285,7 +292,7 @@ function projCard(p) {
   const done = is.filter(isDone).length;
   const next = is.filter(i => i.dl && i.dl >= today() && !isDone(i)).sort((a, b) => a.dl.localeCompare(b.dl))[0];
   const bars = sts.map(s => { const n = is.filter(i => i.st === s.id).length; return n ? `<i class="c-${s.col}" style="width:${n / tot * 100}%" title="${esc(s.n)}: ${n}"></i>` : ''; }).join('');
-  return `<div class="pcw"><button class="pcard" data-a="openp" data-id="${esc(p.id)}"><span class="pe" aria-hidden="true">${esc(p.e || '📁')}</span><b>${esc(p.n)}</b>
+  return `<div class="pcw"><button class="pcard" data-a="openp" data-id="${esc(p.id)}"><span class="pe" aria-hidden="true">${esc(p.e || '📁')}</span><b>${esc(p.n)}</b>${p.sh ? '<span class="tg c-teal shtag">👁 Compartido</span>' : ''}
 <small>${is.length} ${is.length === 1 ? 'iniciativa' : 'iniciativas'} · ${ts.length} ${ts.length === 1 ? 'equipo' : 'equipos'}${is.length ? ` · ${done} ${done === 1 ? 'terminada' : 'terminadas'}` : ''}</small>
 <span class="sbar" aria-hidden="true">${bars}</span>
 <small class="nx">${next ? `Próximo deadline: <b>${esc(dm(next.dl))}</b> · ${esc(next.n)}` : 'Sin deadlines próximos'}</small></button><button class="icon pcm" data-a="pcmenu" data-id="${esc(p.id)}" aria-label="Opciones de ${esc(p.n)}">${I_DOTS}</button></div>`;
@@ -293,12 +300,14 @@ function projCard(p) {
 
 /* ---------- Proyecto ---------- */
 const TABS = [['inits', 'Iniciativas'], ['plan', 'Roadmap'], ['sprints', 'Sprints'], ['cur', 'Sprint actual'], ['teams', 'Equipos'], ['dash', 'Tablero']];
+/* Orden elegido por la persona (arrastrando las pestañas); las que falten van al final en el orden original */
+const tabsOrdered = () => { const o = (D().tabs || []).filter(k => TABS.some(t => t[0] === k)); return [...o.map(k => TABS.find(t => t[0] === k)), ...TABS.filter(t => !o.includes(t[0]))]; };
 const tabOf = p => L.tab[p.id] || 'inits';
 function vProject() {
   const p = P(); if (!p) return '';
   const t = tabOf(p), cnt = { inits: initsOf(p.id).length, teams: teamsOf(p.id).length, sprints: sprintsOf(p.id).length, cur: sprintsOf(p.id).filter(x => spSt(x) === 'cur').length || undefined };
   return `<div class="page ${t === 'plan' ? 'wide' : ''}"><div class="ph pj"><h1 class="vh">${esc(p.n)}</h1>
-<div class="tabs" role="tablist" aria-label="Secciones del proyecto">${TABS.map(([k, n]) => `<button role="tab" data-a="ptab" data-t="${k}" aria-selected="${t === k}">${n}${cnt[k] !== undefined ? ` <span class="cn">${cnt[k]}</span>` : ''}</button>`).join('')}</div></div>
+<div class="tabs" role="tablist" aria-label="Secciones del proyecto. Arrastralas para cambiar el orden">${tabsOrdered().map(([k, n]) => `<button role="tab" data-a="ptab" data-t="${k}" aria-selected="${t === k}" title="${RO ? '' : 'Arrastrá para cambiar el orden · Alt + flechas'}">${n}${cnt[k] !== undefined ? ` <span class="cn">${cnt[k]}</span>` : ''}</button>`).join('')}</div></div>
 ${t === 'inits' ? shellInits(p) : t === 'plan' ? shellPlan(p) : ''}<div id="body"></div></div>`;
 }
 
@@ -594,6 +603,7 @@ function bodyHtml() {
 let scrollKeep = null;
 function paint() {
   const b = $('#body'); if (!b) return;
+  setTimeout(lockRO, 0);
   const rm = $('#rm'); if (rm) scrollKeep = { l: rm.scrollLeft, t: rm.scrollTop, p: curP, vs: P()?.vs, g: P()?.g };
   b.innerHTML = bodyHtml();
   const nr = $('#rm');
@@ -610,8 +620,13 @@ function render() {
   document.body.classList.toggle('rmfull', full);
   $('#v').className = 'v-' + view;
   paintHeader(); paint(); renderSheet();
-  if (view !== 'auth' && !L.onb && onb < 0) onb = 0;
-  paintOnb();
+  if (!RO && view !== 'auth' && !L.onb && onb < 0) onb = 0;
+  paintOnb(); lockRO();
+}
+/* En solo lectura quedan activos solo los controles de vista (orden, meses visibles); el resto se deshabilita. */
+function lockRO() {
+  if (!RO) return;
+  $$('#v [data-ch]').forEach(x => { if (!['sort', 'vn'].includes(x.dataset.ch)) x.disabled = true; });
 }
 function setFull(on, quiet) {
   full = !!on;
@@ -730,7 +745,7 @@ function sheetHtml() {
     case 'newproj': return projForm('Nuevo proyecto', '', '🧭', 'Crear proyecto');
     case 'editproj': return projForm('Editar proyecto', p?.n || '', p?.e || '', 'Guardar');
     case 'pswitch': return `<div class="sh" role="dialog" aria-modal="true" aria-label="Cambiar de proyecto"><h2>Proyectos</h2>${projects().map(x => `<button class="rowb" data-a="openp" data-id="${esc(x.id)}"><span>${nm(x)}</span>${x.id === curP ? '<span class="ck">✓</span>' : ''}</button>`).join('')}<button class="rowb acc" data-a="newproj">+ Nuevo proyecto</button><button class="rowb" data-a="go" data-v="projects">Ver todos los proyectos</button><button class="rowb" data-a="pmenu">Opciones de este proyecto…</button></div>`;
-    case 'pmenu': return `<div class="sh" role="dialog" aria-modal="true" aria-label="Opciones del proyecto"><h2>${p ? nm(p) : 'Proyecto'}</h2><button class="rowb" data-a="pedit">Editar nombre y emoji</button><button class="rowb" data-a="states">Editar estados</button><button class="rowb" data-a="csv">Exportar iniciativas (Excel / CSV)</button><button class="rowb dng" data-a="pdel">Eliminar proyecto</button></div>`;
+    case 'pmenu': return `<div class="sh" role="dialog" aria-modal="true" aria-label="Opciones del proyecto"><h2>${p ? nm(p) : 'Proyecto'}</h2><button class="rowb" data-a="pedit">Editar nombre y emoji</button><button class="rowb" data-a="states">Editar estados</button><button class="rowb" data-a="share">Compartir (solo lectura)</button><button class="rowb" data-a="csv">Exportar iniciativas (Excel / CSV)</button><button class="rowb dng" data-a="pdel">Eliminar proyecto</button></div>`;
     case 'init': return initSheet();
     case 'block': return blockSheet();
     case 'states': return `<div class="sh wide" role="dialog" aria-modal="true" aria-label="Estados"><h2>Estados del proyecto</h2><p class="mut small">Ordená, renombrá, cambiá colores o sumá estados. Marcá «Terminado» en los que cierran una iniciativa.</p>${tagEditor('states', curP)}<button class="btn" data-a="close" style="margin-top:16px">Listo</button></div>`;
@@ -741,6 +756,17 @@ function sheetHtml() {
       return `<div class="sh" role="dialog" aria-modal="true" aria-label="Cerrar sprint"><h2>¿Cerrar ${esc(sp.n)}?</h2><p class="mut">${is.length - open.length} de ${is.length} iniciativas terminadas. Queda guardado cómo terminó para el historial.</p>
 ${open.length && nx ? `<label class="ckl"><input type="checkbox" id="spmv" checked> Pasar las ${open.length} sin terminar a <b>${esc(nx.n)}</b></label>` : open.length ? `<p class="small mut">${open.length} sin terminar. Si creás el próximo sprint, podés sumarlas desde ahí.</p>` : ''}
 <button class="btn" data-a="spcloseok" data-id="${esc(sp.id)}" data-nx="${nx ? esc(nx.id) : ''}">Cerrar sprint</button><button class="btn ghost" data-a="close">Cancelar</button></div>`; }
+    case 'share': { const pp = proj(s.id); if (!pp) return '';
+      const link = pp.sh ? location.origin + location.pathname + '?ver=' + pp.sh : '';
+      return `<div class="sh" role="dialog" aria-modal="true" aria-label="Compartir proyecto"><h2>Compartir «${esc(pp.n)}»</h2>
+${link ? `<p class="mut">Cualquiera con este link ve el proyecto completo (iniciativas, roadmap, sprints, equipos y tablero), <b>sin cuenta y sin poder editar</b>. Se actualiza solo con tus cambios.</p>
+<div class="lkrow"><input id="shl" class="in" type="text" readonly value="${esc(link)}" aria-label="Link para compartir"><button class="btn auto" data-a="shcopy">Copiar</button></div>
+<a class="lnk ext" href="${esc(link)}" target="_blank" rel="noopener">Abrir como lo ven los demás ↗</a>
+<p class="err" role="alert">${esc(s.err || '')}</p>
+<button class="btn danger" data-a="shoff">Dejar de compartir</button>` : `<p class="mut">Creá un link de <b>solo lectura</b>: quien lo abra ve todo el proyecto (iniciativas, roadmap, sprints, equipos y tablero) sin necesidad de cuenta, y no puede editar nada. Se va actualizando con tus cambios.</p>
+<p class="err" role="alert">${esc(s.err || '')}</p>
+<button class="btn" data-a="shon"${s.busy ? ' disabled' : ''}>${s.busy ? 'Creando…' : 'Crear link para compartir'}</button>`}
+<button class="btn ghost" data-a="close">Cerrar</button></div>`; }
     case 'name': return `<form id="sf" novalidate class="sh" data-f="name" role="dialog" aria-modal="true" aria-label="Tu nombre"><h2>¿Cómo te llamamos?</h2><input id="sn" class="in" type="text" maxlength="30" value="${esc(D().name || '')}" placeholder="Tu nombre o apodo" autocomplete="off" autocapitalize="words" aria-label="Tu nombre"><button class="btn" type="submit" style="margin-top:14px">Guardar</button><button class="btn ghost" type="button" data-a="close">Cancelar</button></form>`;
   }
   return '';
@@ -757,6 +783,12 @@ function renderSheet() {
   o.addEventListener('mousedown', e => { if (e.target === o && now() - t0 > 450) closeSheet(); });
   root.append(o);
   d.scrollTop = keep;
+  if (RO) {
+    d.querySelectorAll('input,select,textarea').forEach(x => { x.disabled = true; });
+    d.querySelectorAll('button[type=submit],.btn.danger,[data-a=badd],[data-a=bteamnew],[data-a=bteamadd],[data-a=bteam],[data-a=pickcol],[data-a=tgmv],[data-a=tgdel],.tga').forEach(x => { x.hidden = true; });
+    const c = d.querySelector('[data-a=close]'); if (c) c.textContent = 'Cerrar';
+    d.querySelector('h2')?.insertAdjacentHTML('beforeend', ' <span class="rob sm">Solo lectura</span>');
+  }
   const f = sheet.focus && d.querySelector(sheet.focus);
   sheet.focus = '';
   if (f) f.focus();
@@ -861,6 +893,7 @@ function autoScroll(e) {
   else if (e.clientX < r.left + lw + 30) rm.scrollLeft -= 14;
 }
 document.addEventListener('pointerdown', e => {
+  if (RO) return;
   const rt = e.target.closest('#rm .rb .rt'); if (!rt) return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   const p = P(), T = tl(p), row = rt.parentElement, blk = e.target.closest('.blk');
@@ -921,7 +954,7 @@ document.addEventListener('pointercancel', e => endDrag(e, true));
 /* Teclado: flechas mueven el plazo un día; Mayús + flechas cambian el final */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { if (rdrag) { endSort(true); return; } if (drag) { endDrag(e, true); return; } if (sheet) { closeSheet(); return; } if (onb >= 0) { closeOnb(); return; } if (full) { setFull(false); return; } }
-  const blk = e.target.closest?.('.blk'); if (!blk || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+  const blk = e.target.closest?.('.blk'); if (RO || !blk || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
   e.preventDefault();
   const b = D().blocks[blk.dataset.b]; if (!b) return;
   const k = e.key === 'ArrowLeft' ? -1 : 1;
@@ -999,6 +1032,7 @@ const A = {
   openp(b) { sheet = null; openProject(b.dataset.id); },
   pswitch() { openSheet({ t: 'pswitch' }); },
   pmenu() { openSheet({ t: 'pmenu' }); },
+  pcshare(b) { curP = b.dataset.id; A.share(); },
   pcmenu(b) { if (!proj(b.dataset.id)) return; curP = b.dataset.id; openSheet({ t: 'pmenu' }); },
   full() { setFull(!full); },
   pedit() { openSheet({ t: 'editproj' }); },
@@ -1035,11 +1069,11 @@ const A = {
     sheet = back && back.t === 'init' ? back : null; renderSheet(); if (sheet) paint(); else render();
     toast('Plazo eliminado', 'Deshacer', () => { b.del = false; b.u = now(); touch(); render(); });
   },
-  gran(b) { const p = P(); upd('projects', p.id, { g: b.dataset.v }); touch(); render(); },
-  gb(b) { const p = P(); upd('projects', p.id, { gb: b.dataset.v }); touch(); render(); },
+  gran(b) { const p = P(); roKeep.g = b.dataset.v; upd('projects', p.id, { g: b.dataset.v }); touch(); render(); },
+  gb(b) { const p = P(); roKeep.gb = b.dataset.v; upd('projects', p.id, { gb: b.dataset.v }); touch(); render(); },
   gbteam() { const p = P(); upd('projects', p.id, { gb: 't' }); L.tab[p.id] = 'plan'; saveL(); touch(); render(); },
-  rmnav(b) { const p = P(); upd('projects', p.id, { vs: addM(tl(p).vs, +b.dataset.v) }); touch(); render(); },
-  rmtoday() { const p = P(); upd('projects', p.id, { vs: ymOf(today()) }); touch(); scrollKeep = null; render(); },
+  rmnav(b) { const p = P(); roKeep.vs = addM(tl(p).vs, +b.dataset.v); upd('projects', p.id, { vs: roKeep.vs }); touch(); render(); },
+  rmtoday() { const p = P(); roKeep.vs = ymOf(today()); upd('projects', p.id, { vs: roKeep.vs }); touch(); scrollKeep = null; render(); },
   pickcol(b) { openSheet({ t: 'color', k: b.dataset.k, id: b.dataset.id, back: sheet }); },
   setcol(b) { const s = sheet; upd(s.k, s.id, { col: b.dataset.c }); touch(); sheet = s.back; renderSheet(); render(); },
   tgmv(b) { moveTag(b.dataset.k, b.dataset.id, +b.dataset.v); refreshTags(); },
@@ -1075,6 +1109,25 @@ const A = {
     touch(); sheet = null; render(); toast(`${sp.n} cerrado${mv ? ` · ${open.length} pasaron a ${nx.n}` : ''}`);
   },
   spreopen(b) { upd('sprints', b.dataset.id, { cl: false, dn: [] }); touch(); render(); },
+  share() { if (P()) openSheet({ t: 'share', id: curP }); },
+  async shon() {
+    const p = proj(sheet.id); if (!p || sheet.busy) return;
+    const a = new Uint8Array(24); crypto.getRandomValues(a);
+    const tok = Array.from(a, x => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[x % 62]).join('');
+    sheet.busy = true; sheet.err = ''; renderSheet();
+    try { await api('/share', { method: 'POST', body: JSON.stringify({ token: tok }) }); }
+    catch (e) { sheet.busy = false; sheet.err = e.net ? 'Sin conexión: probá de nuevo cuando vuelva' : e.status === 404 ? 'Falta actualizar el servidor (ver instrucciones)' : e.message; renderSheet(); return; }
+    upd('projects', p.id, { sh: tok }); touch(); sync();
+    sheet.busy = false; renderSheet(); paintHeader();
+  },
+  shcopy() { const i = $('#shl'); if (!i) return; i.select(); (navigator.clipboard ? navigator.clipboard.writeText(i.value) : Promise.reject()).then(() => toast('Link copiado'), () => { try { document.execCommand('copy'); toast('Link copiado'); } catch (_) {} }); },
+  shoff() {
+    const p = proj(sheet.id); if (!p) return; const tok = p.sh;
+    ask('¿Dejar de compartir?', 'El link deja de funcionar para todos. Si lo volvés a compartir se crea uno nuevo.', 'Sí, dejar de compartir', () => {
+      upd('projects', p.id, { sh: '' }); touch(); sync(); api('/share/' + tok, { method: 'DELETE' }).catch(() => {});
+      sheet = { t: 'share', id: p.id }; renderSheet(); paintHeader(); toast('El link ya no funciona');
+    });
+  },
   editname() { openSheet({ t: 'name' }); },
   syncnow() { if (!S.dirty) S.dirty = true; sync().then(ok => toast(ok ? 'Sincronizado ✓' : 'No se pudo sincronizar')); },
   theme(b) { L.theme = b.dataset.v; saveL(); applyTheme(); render(); },
@@ -1091,6 +1144,50 @@ const A = {
   ofirst() { closeOnb(); openSheet({ t: 'newproj' }); },
   osample() { closeOnb(); A.sample(); }
 };
+/* ---------- Ordenar pestañas (arrastrando, o Alt + flechas) ---------- */
+let tdrag = null, tabSuppress = false;
+function saveTabs(keys) { D().tabs = keys; D().tabsU = now(); touch(); render(); }
+document.addEventListener('pointerdown', e => {
+  if (RO) return;
+  const tb = e.target.closest('.tabs [role=tab]'); if (!tb || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  const bar = tb.parentElement, tabs = [...bar.children], x0 = bar.getBoundingClientRect().left;
+  tdrag = { tb, bar, tabs, idx: tabs.indexOf(tb), to: tabs.indexOf(tb), rects: tabs.map(t => { const r = t.getBoundingClientRect(); return { l: r.left - x0, w: r.width }; }), x0: e.clientX, moved: false, id: e.pointerId };
+});
+document.addEventListener('pointermove', e => {
+  const d = tdrag; if (!d) return;
+  const dx = e.clientX - d.x0;
+  if (!d.moved) { if (Math.abs(dx) < 8) return; d.moved = true; dragging = true; d.tb.setPointerCapture(d.id); d.tb.classList.add('tlift'); document.body.classList.add('sorting'); }
+  const me = d.rects[d.idx], c = me.l + me.w / 2 + dx, gap = 4;
+  let to = d.idx;
+  for (let i = d.idx + 1; i < d.tabs.length; i++) if (c > d.rects[i].l + d.rects[i].w / 2) to = i;
+  for (let i = d.idx - 1; i >= 0; i--) if (c < d.rects[i].l + d.rects[i].w / 2) to = i;
+  d.to = to;
+  d.tabs.forEach((t, i) => { if (t === d.tb) return; t.style.transform = d.idx < i && i <= to ? `translateX(${-(me.w + gap)}px)` : to <= i && i < d.idx ? `translateX(${me.w + gap}px)` : ''; });
+  d.tb.style.transform = `translateX(${dx}px)`;
+});
+function endTabDrag(cancel) {
+  const d = tdrag; tdrag = null; if (!d) return;
+  d.tabs.forEach(t => { t.style.transform = ''; t.classList.remove('tlift'); });
+  document.body.classList.remove('sorting');
+  setTimeout(() => { dragging = false; }, 0);
+  if (!d.moved) return;
+  tabSuppress = true; setTimeout(() => { tabSuppress = false; }, 50);
+  if (cancel || d.to === d.idx) return;
+  const keys = d.tabs.map(t => t.dataset.t), [m] = keys.splice(d.idx, 1);
+  keys.splice(d.to, 0, m); saveTabs(keys);
+}
+document.addEventListener('pointerup', () => endTabDrag());
+document.addEventListener('pointercancel', () => endTabDrag(true));
+document.addEventListener('keydown', e => {
+  if (RO || !e.altKey || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+  const tb = e.target.closest?.('.tabs [role=tab]'); if (!tb) return;
+  e.preventDefault();
+  const keys = [...tb.parentElement.children].map(t => t.dataset.t), i = keys.indexOf(tb.dataset.t), j = i + (e.key === 'ArrowLeft' ? -1 : 1);
+  if (j < 0 || j >= keys.length) return;
+  [keys[i], keys[j]] = [keys[j], keys[i]]; saveTabs(keys);
+  $(`.tabs [data-t="${tb.dataset.t}"]`)?.focus();
+});
+
 /* ---------- Ordenar iniciativas (arrastrar el agarre ⋮⋮, o flechas arriba/abajo) ---------- */
 /* `vis` es el orden visible después del cambio; se integra al orden completo (respeta filtros) y pasa a "Orden manual". */
 function applyOrder(id, vis) {
@@ -1107,6 +1204,7 @@ function applyOrder(id, vis) {
 }
 let rdrag = null;
 document.addEventListener('pointerdown', e => {
+  if (RO) return;
   const g = e.target.closest('.grip'); if (!g) return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   const row = g.closest('[data-rid]'), box = row.parentElement;
@@ -1147,7 +1245,7 @@ function endSort(cancel) {
 document.addEventListener('pointerup', () => endSort());
 document.addEventListener('pointercancel', () => endSort(true));
 document.addEventListener('keydown', e => {
-  const g = e.target.closest?.('.grip'); if (!g || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+  const g = e.target.closest?.('.grip'); if (RO || !g || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
   e.preventDefault();
   const row = g.closest('[data-rid]'), vis = [...row.parentElement.children].filter(x => x.dataset.rid).map(x => x.dataset.rid);
   const i = vis.indexOf(g.dataset.g), j = i + (e.key === 'ArrowUp' ? -1 : 1);
@@ -1157,10 +1255,13 @@ document.addEventListener('keydown', e => {
   $(`.grip[data-g="${CSS.escape(g.dataset.g)}"]`)?.focus();
 });
 function refreshTags() { if (sheet && sheet.t === 'states') renderSheet(); else render(); }
+const RO_OK = new Set(['ptab', 'flt', 'gran', 'gb', 'rmnav', 'rmtoday', 'full', 'dwn', 'dwnav', 'iopen', 'bopen', 'spedit', 'close', 'theme']);
 document.addEventListener('click', e => {
   const blk = e.target.closest('.blk');
   if (blk && e.detail === 0) { openBlock(blk.dataset.b); return; }     // Enter o espacio sobre un plazo
   const b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
+  if (tabSuppress) { tabSuppress = false; if (b.dataset.a === 'ptab') { e.preventDefault(); return; } }
+  if (RO && !RO_OK.has(b.dataset.a)) { e.preventDefault(); return; }
   const f = A[b.dataset.a]; if (f) { e.preventDefault(); f(b); }
 });
 document.addEventListener('submit', e => {
@@ -1197,7 +1298,7 @@ document.addEventListener('change', e => {
   const p = P(); if (!p) return;
   const id = t.dataset.id;
   if (ch === 'sort') { L.sort[p.id] = t.value; saveL(); render(); return; }
-  if (ch === 'vn') { upd('projects', p.id, { vn: +t.value }); touch(); render(); return; }
+  if (ch === 'vn') { roKeep.vn = +t.value; upd('projects', p.id, { vn: +t.value }); touch(); render(); return; }
   if (ch === 'dl') { upd('inits', id, { dl: t.value || '' }); touch(); paint(); return; }
   if (ch === 'p') { upd('inits', id, { p: t.value }); touch(); paint(); return; }
   if (ch === 'st') {
@@ -1221,11 +1322,38 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instal
 setInterval(() => { if (document.visibilityState === 'visible' && S.token && !sheet && !dragging) sync(); }, 45000);
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
 
+/* Solo lectura: trae el proyecto compartido y lo vuelve a pedir cada 30 segundos mientras la pestaña está a la vista. */
+const roKeep = {};
+async function roFetch() {
+  try {
+    const r = await fetch(apiBase() + '/public/' + RO_TOKEN, { cache: 'no-store' });
+    const b = await r.json().catch(() => null);
+    if (!r.ok) { roGone = (b && b.error) || 'Este link ya no está disponible'; roErr = ''; renderGone(); return; }
+    S.data = sanitizeState(b.data); curP = b.pr; roAt = Date.now(); roErr = ''; roGone = '';
+    const p = P(); if (p) Object.assign(p, roKeep);
+    view = 'project';
+    if (sheet || dragging) paintHeader(); else render();
+  } catch (_) { roErr = 'net'; paintHeader(); }
+}
+function renderGone() {
+  view = 'project'; S.data = emptyState(); curP = '';
+  $('#hd').hidden = true; sheet = null; renderSheet();
+  $('#v').className = 'v-gone';
+  $('#v').innerHTML = `<div class="page"><div class="empty first"><div class="big" aria-hidden="true">🔒</div><h1>${esc(roGone)}</h1><p class="mut">Puede que quien lo compartió haya dejado de compartirlo. Pedile un link nuevo.</p></div></div>`;
+}
+if (RO) {
+  if (CFG.API_URL) { /* el link usa el servidor de la app */ }
+  roFetch().then(hideSplash);
+  setInterval(() => { if (document.visibilityState === 'visible' && !roGone) roFetch(); }, 30000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !roGone) roFetch(); });
+}
+
 remoteSig = JSON.stringify(S.data);
-if (S.token) {
+if (RO) { /* arranca en roFetch */ }
+else if (S.token) {
   if (!navigator.onLine) st = 'off';
   startView();
   sync();
 } else render();
-hideSplash();
+if (!RO) hideSplash();
 })();
