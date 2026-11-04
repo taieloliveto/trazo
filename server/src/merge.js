@@ -9,7 +9,7 @@
                   n nombre · e emoji · g granularidad (m mes | q quincena | w semana | d día)
                   vs primer mes visible 'AAAA-MM' · vn cantidad de meses visibles · gb agrupar por (i iniciativa | t equipo)
      states:   { id: { id, pr, n, col, dn, o, c, u, del } } estados de un proyecto (editables) · dn cuenta como terminado
-     teams:    { id: { id, pr, n, col, o, c, u, del } }    equipos o personas de un proyecto
+     teams:    { id: { id, pr, n, col, cap, o, c, u, del } } equipos o personas de un proyecto · cap iniciativas en paralelo (0 = 2 por defecto)
      inits:    { id: { id, pr, n, dl, st, p, ln, no, o, c, u, del } }
                   iniciativa · dl deadline 'AAAA-MM-DD' · st estado · p prioridad (urg|high|mid|low|'') · ln enlace · no notas
      blocks:   { id: { id, pr, in, tm, s, e, lb, c, u, del } }
@@ -56,7 +56,7 @@ function fixTag(r, id) {        // estados y equipos tienen la misma forma
   if (!isObj(r) || !idOk(r.pr)) return null;
   const del = !!r.del, n = str(r.n, 40).trim();
   if (!n && !del) return null;
-  return { id, pr: r.pr, n, col: col(r.col), dn: !!r.dn, o: ordN(r.o), c: num(r.c), u: num(r.u), del };
+  return { id, pr: r.pr, n, col: col(r.col), dn: !!r.dn, cap: Math.min(99, Math.max(0, Math.round(num(r.cap)))), o: ordN(r.o), c: num(r.c), u: num(r.u), del };
 }
 function fixInit(r, id) {
   if (!isObj(r) || !idOk(r.pr)) return null;

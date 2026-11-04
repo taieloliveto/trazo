@@ -299,6 +299,25 @@ await step('agrupar por equipo', async () => {
   await shot(page, '12-roadmap-por-equipo');
   await page.click('[data-a=gb][data-v=i]');
 });
+await step('tablero: indicadores, gráficos, capacidad y listas', async () => {
+  await page.click('[data-a=ptab][data-t=teams]');
+  const capIn = page.locator('.tgr').filter({ has: page.locator('input[value="Desarrollo"]') }).locator('input[data-ch=tgcap]');
+  await capIn.fill('1'); await capIn.press('Tab');
+  assert.equal(live((await data(page)).teams).find(x => x.n === 'Desarrollo').cap, 1);
+  await page.click('[data-a=ptab][data-t=dash]');
+  await page.waitForSelector('.kpis');
+  assert.equal(await page.locator('.kpi').count(), 6);
+  assert.equal((await page.locator('.kpi.bad b').textContent()).trim(), '1', 'una iniciativa atrasada');
+  assert.equal(await page.locator('.hm tbody tr').count(), 3);
+  assert.equal(await page.locator('.hm thead th').count(), 8 + 2);
+  await page.click('[data-a=dwn][data-v="12"]');
+  assert.equal(await page.locator('.hm thead th').count(), 12 + 2);
+  await page.click('[data-a=dwnav][data-v="1"]'); await page.click('[data-a=dwnav][data-v="0"]');
+  await page.click('[data-a=dwn][data-v="8"]');
+  await shot(page, '12d-tablero');
+  await page.screenshot({ path: join(SHOTS, '12e-tablero-completo.png'), fullPage: true });
+  await page.click('[data-a=ptab][data-t=plan]');
+});
 await step('roadmap en pantalla completa', async () => {
   await page.click('[data-a=full]');
   await page.waitForSelector('body.rmfull');
@@ -391,6 +410,10 @@ await step('pantalla vacía ofrece el ejemplo', async () => {
   assert.ok(await q.locator('.dlm').count() >= 3, 'marcas de deadline');
   await q.click('[data-a=ptab][data-t=inits]');
   await q.screenshot({ path: join(SHOTS, '19-ejemplo-iniciativas.png') });
+  await q.click('[data-a=ptab][data-t=dash]');
+  await q.waitForSelector('.hm');
+  assert.ok(await q.locator('.hm td.lv4, .hm td.lv3, .hm td.lv2, .hm td.lv1').count() > 0);
+  await q.screenshot({ path: join(SHOTS, '19b-ejemplo-tablero.png'), fullPage: true });
   await q.click('[data-a=ptab][data-t=teams]');
   await q.screenshot({ path: join(SHOTS, '20-ejemplo-equipos.png') });
   await q.evaluate(() => { localStorage.setItem('trazo.local', JSON.stringify({ ...JSON.parse(localStorage.getItem('trazo.local')), theme: 'dark' })); });

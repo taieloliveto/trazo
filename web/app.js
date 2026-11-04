@@ -270,7 +270,7 @@ function projCard(p) {
 }
 
 /* ---------- Proyecto ---------- */
-const TABS = [['inits', 'Iniciativas'], ['plan', 'Roadmap'], ['teams', 'Equipos']];
+const TABS = [['inits', 'Iniciativas'], ['plan', 'Roadmap'], ['teams', 'Equipos'], ['dash', 'Tablero']];
 const tabOf = p => L.tab[p.id] || 'inits';
 function vProject() {
   const p = P(); if (!p) return '';
@@ -399,10 +399,70 @@ function tagEditor(kind, pr) {
   return `<div class="tge">${items.map((x, k) => { const u = used(x.id); return `<div class="tgr"><button class="sw c-${x.col}" data-a="pickcol" data-k="${kind}" data-id="${esc(x.id)}" aria-label="Color de ${esc(x.n)}: ${COLN[x.col]}"></button>
 <input class="in sm tgn" type="text" maxlength="40" value="${esc(x.n)}" data-ch="tgn" data-k="${kind}" data-id="${esc(x.id)}" aria-label="Nombre">
 ${kind === 'states' ? `<label class="dnc" title="Las iniciativas en este estado cuentan como terminadas"><input type="checkbox" data-ch="tgdn" data-id="${esc(x.id)}"${x.dn ? ' checked' : ''}> Terminado</label>` : ''}
+${kind === 'teams' ? `<label class="capc" title="Cuántas iniciativas puede llevar en paralelo por semana">Capacidad<input class="in sm" type="number" min="1" max="99" inputmode="numeric" value="${capOf(x)}" data-ch="tgcap" data-id="${esc(x.id)}" aria-label="Capacidad de ${esc(x.n)}: iniciativas en paralelo"></label>` : ''}
 <small class="mut us">${u} ${u === 1 ? unit[0] : unit[1]}</small>
 <span class="ord"><button class="icon xs" data-a="tgmv" data-k="${kind}" data-id="${esc(x.id)}" data-v="-1" aria-label="Subir"${k ? '' : ' disabled'}>↑</button><button class="icon xs" data-a="tgmv" data-k="${kind}" data-id="${esc(x.id)}" data-v="1" aria-label="Bajar"${k < items.length - 1 ? '' : ' disabled'}>↓</button></span>
 <button class="icon xs dng" data-a="tgdel" data-k="${kind}" data-id="${esc(x.id)}" aria-label="Eliminar ${esc(x.n)}">${I_TRASH}</button></div>`; }).join('') || `<p class="mut small">${kind === 'states' ? 'No hay estados.' : 'Todavía no hay equipos ni personas.'}</p>`}</div>
 <form class="tga" data-k="${kind}" autocomplete="off"><input class="in" type="text" maxlength="40" placeholder="${kind === 'states' ? 'Nuevo estado (ej. En refinamiento)' : 'Nuevo equipo o persona (ej. QA, Ana)'}" aria-label="${kind === 'states' ? 'Nuevo estado' : 'Nuevo equipo o persona'}"><button class="btn auto" type="submit">Agregar</button></form>`;
+}
+/* --- Tablero --- */
+const capOf = t => t.cap || 2;
+const WEEKS = [4, 8, 12];
+/* Iniciativas distintas que un equipo tiene en una semana (lunes a domingo) */
+function weekLoad(bl, tm, ws) { const we = addD(ws, 6), set = new Set(); for (const b of bl) if (b.tm === tm && b.s <= we && b.e >= ws) set.add(b.in); return set; }
+const ICO_WARN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17h.01"/></svg>';
+const ICO_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>';
+const ICO_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+function bodyDash(p) {
+  const is = initsOf(p.id), t = today(), bl = blocksOf(p.id), ts = teamsOf(p.id);
+  if (!is.length) return `<div class="empty"><div class="big" aria-hidden="true">📊</div><p><b>El tablero se arma con tus iniciativas.</b></p><p class="mut">Cargá iniciativas y planificalas por equipo para ver avance, atrasos y capacidad.</p><button class="btn auto" data-a="ptab" data-t="inits">Ir a Iniciativas</button></div>`;
+  const done = is.filter(isDone), open = is.filter(i => !isDone(i));
+  const byDl = (a, b) => a.dl.localeCompare(b.dl);
+  const late = open.filter(i => i.dl && i.dl < t).sort(byDl);
+  const soon = open.filter(i => i.dl && i.dl >= t && dn(i.dl) - dn(t) <= 14).sort(byDl);
+  const endOf = i => bl.filter(b => b.in === i.id).reduce((m, b) => b.e > m ? b.e : m, '');
+  const risk = open.filter(i => i.dl && i.dl >= t && endOf(i) > i.dl).sort(byDl);
+  const unpl = open.filter(i => !bl.some(b => b.in === i.id)).sort((a, b) => PRIO[a.p].r - PRIO[b.p].r);
+  const pct = Math.round(done.length / is.length * 100);
+  const tile = (n, lab, sub, cls = '', ico = '') => `<div class="kpi ${cls}"><span class="kl">${ico}${lab}</span><b>${n}</b><small>${sub}</small></div>`;
+  const tiles = `<div class="kpis">
+${tile(is.length, 'Iniciativas', `${open.length} abiertas · ${done.length} terminadas`)}
+${tile(pct + '%', 'Avance', `<span class="pbar" aria-hidden="true"><i style="width:${pct}%"></i></span>${done.length} de ${is.length} finalizadas`, 'ok', ICO_OK)}
+${tile(late.length, 'Atrasadas', late.length ? 'Deadline vencido sin terminar' : 'Nada vencido', late.length ? 'bad' : '', ICO_WARN)}
+${tile(soon.length, 'Vencen en 14 días', soon.length ? `Próxima: ${esc(dm(soon[0].dl))}` : 'Sin deadlines cerca', soon.length ? 'warn' : '', ICO_CLOCK)}
+${tile(risk.length, 'En riesgo', 'Planificadas para terminar después del deadline', risk.length ? 'warn' : '', ICO_WARN)}
+${tile(unpl.length, 'Sin planificar', 'Abiertas sin plazos en el roadmap')}</div>`;
+  /* Iniciativas por estado */
+  const sts = statesOf(p.id).map(s => ({ s, n: is.filter(i => i.st === s.id).length }));
+  const mx = Math.max(1, ...sts.map(x => x.n));
+  const stChart = `<section class="card"><h2>Iniciativas por estado</h2><div class="hb" role="table" aria-label="Iniciativas por estado">${sts.map(({ s, n }) => `<div class="hbr" role="row" title="${esc(s.n)}: ${n} ${n === 1 ? 'iniciativa' : 'iniciativas'} (${Math.round(n / is.length * 100)}%)"><span role="rowheader"><i class="dot c-${s.col}"></i>${esc(s.n)}</span><span class="hbt" role="cell"><i class="c-${s.col}" style="width:${n / mx * 100}%"></i></span><b role="cell">${n}</b></div>`).join('')}</div></section>`;
+  /* Abiertas por prioridad, con cuántas están atrasadas */
+  const prs = PRIO_KEYS.map(k => ({ k, n: open.filter(i => i.p === k).length, l: late.filter(i => i.p === k).length })).filter(x => x.n);
+  const mp = Math.max(1, ...prs.map(x => x.n));
+  const prChart = `<section class="card"><h2>Abiertas por prioridad</h2>${prs.length ? `<div class="hb" role="table" aria-label="Iniciativas abiertas por prioridad">${prs.map(x => `<div class="hbr" role="row" title="${PRIO[x.k].n}: ${x.n} abiertas, ${x.l} atrasadas"><span role="rowheader">${PRIO[x.k].n}</span><span class="hbt" role="cell"><i class="pl" style="width:${(x.n - x.l) / mp * 100}%"></i>${x.l ? `<i class="lt" style="width:${x.l / mp * 100}%"></i>` : ''}</span><b role="cell">${x.n}${x.l ? ` <small class="late">· ${x.l} atras.</small>` : ''}</b></div>`).join('')}</div>
+<div class="lg"><span><i class="pl"></i>En término</span><span><i class="lt"></i>Atrasadas</span></div>` : '<p class="mut small">No hay iniciativas abiertas.</p>'}</section>`;
+  /* Capacidad por equipo y semana */
+  const nW = WEEKS.includes(L.dw?.[p.id]) ? L.dw[p.id] : 8, off = (L.do && L.do[p.id]) || 0;
+  const w0 = addD(mondayOf(t), off * 7), weeks = Array.from({ length: nW }, (_, k) => addD(w0, k * 7));
+  const lvl = (n, c) => !n ? 0 : n > c ? 4 : n === c ? 3 : n / c > .5 ? 2 : 1;
+  const LV = ['Libre', 'Con lugar', 'Con lugar', 'Al límite', 'Sobrecargado'];
+  const cap = ts.length ? `<div class="hmw"><table class="hm"><thead><tr><th scope="col">Equipo <small>(capacidad)</small></th>${weeks.map(w => `<th scope="col"${w === mondayOf(t) ? ' class="now"' : ''}><small>Semana</small>${esc(dm(w))}</th>`).join('')}<th scope="col">Sobrecarga</th></tr></thead><tbody>
+${ts.map(x => { let over = 0; const c = capOf(x); const cells = weeks.map(w => { const set = weekLoad(bl, x.id, w), n = set.size, l = lvl(n, c); if (l === 4) over++; const names = [...set].map(id => D().inits[id]?.n).filter(Boolean).join(', '); return `<td class="lv${l}" title="${esc(x.n)} · semana del ${esc(dm(w))}: ${n} de ${c} — ${LV[l]}${names ? '\n' + esc(names) : ''}">${l === 4 ? ICO_WARN : ''}${n ? `${n}<small>/${c}</small>` : '<small>—</small>'}</td>`; }).join(''); return `<tr><th scope="row"><i class="dot c-${x.col}"></i>${esc(x.n)} <small>(${c})</small></th>${cells}<td class="ovr${over ? ' bad' : ''}">${over ? `${over} ${over === 1 ? 'semana' : 'semanas'}` : '—'}</td></tr>`; }).join('')}</tbody></table></div>
+<div class="lg"><span><i class="lv1"></i>Con lugar</span><span><i class="lv3"></i>Al límite</span><span><i class="lv4"></i>Sobrecargado</span><span class="mut">Número = iniciativas en paralelo / capacidad</span></div>`
+    : `<p class="mut small">Agregá equipos o personas para ver su carga por semana.</p>`;
+  const capCard = `<section class="card"><div class="ch"><div><h2>Capacidad por equipo y semana</h2><p class="mut small">Cuántas iniciativas tiene cada equipo en paralelo cada semana, contra su capacidad.</p></div>
+<div class="chc"><div class="navm"><button class="icon sm" data-a="dwnav" data-v="-1" aria-label="Semanas anteriores">‹</button><button class="mini" data-a="dwnav" data-v="0">Esta semana</button><button class="icon sm" data-a="dwnav" data-v="1" aria-label="Semanas siguientes">›</button></div>
+<div class="segs" role="group" aria-label="Semanas visibles">${WEEKS.map(n => `<button data-a="dwn" data-v="${n}" aria-pressed="${n === nW}">${n} sem.</button>`).join('')}</div><button class="lnk" data-a="ptab" data-t="teams">Editar capacidad</button></div></div>${cap}</section>`;
+  /* Listas */
+  const days = (a, b) => { const d = dn(b) - dn(a); return `${d} ${d === 1 ? 'día' : 'días'}`; };
+  const row = (i, right) => { const s = stateOf(i.st); return `<button class="dli" data-a="iopen" data-id="${esc(i.id)}"><span class="dn">${esc(i.n)}</span><span class="dm">${s ? chip(s.n, s.col) : ''}${i.p ? `<span class="pt-${i.p}">${PRIO[i.p].n}</span>` : ''}</span><span class="dr">${right}</span></button>`; };
+  const list = (title, items, fn, empty, cls = '') => `<section class="card ${cls}"><h2>${title} <span class="cn">${items.length}</span></h2>${items.length ? `<div class="dlst">${items.slice(0, 8).map(fn).join('')}</div>${items.length > 8 ? `<p class="mut small">y ${items.length - 8} más</p>` : ''}` : `<p class="mut small">${empty}</p>`}</section>`;
+  const lists = `<div class="dgrid2">
+${list('Atrasadas', late, i => row(i, `<b class="late">${days(i.dl, t)} tarde</b><small>${esc(dm(i.dl))}</small>`), 'No hay iniciativas atrasadas 🎉')}
+${list('En riesgo', risk, i => row(i, `<b class="warnt">termina ${days(i.dl, endOf(i))} después</b><small>deadline ${esc(dm(i.dl))}</small>`), 'Todo lo planificado termina antes de su deadline.')}
+${list('Próximos deadlines', soon, i => row(i, `<b>${i.dl === t ? 'hoy' : 'en ' + days(t, i.dl)}</b><small>${esc(dm(i.dl))}</small>`), 'Nada vence en las próximas dos semanas.')}
+${list('Sin planificar', unpl, i => row(i, `<span class="lnk" data-a="iplan" data-id="${esc(i.id)}">Planificar</span>`), 'Todas las iniciativas abiertas tienen plazos.')}</div>`;
+  return `<div class="dash">${tiles}<div class="dgrid2">${stChart}${prChart}</div>${capCard}${lists}</div>`;
 }
 function bodyTeams(p) {
   const ts = teamsOf(p.id), bl = blocksOf(p.id), t = today();
@@ -432,7 +492,7 @@ function vSet() {
 function bodyHtml() {
   const p = P(); if (view !== 'project' || !p) return '';
   const t = tabOf(p);
-  return t === 'inits' ? bodyInits(p) : t === 'plan' ? bodyPlan(p) : bodyTeams(p);
+  return t === 'inits' ? bodyInits(p) : t === 'plan' ? bodyPlan(p) : t === 'dash' ? bodyDash(p) : bodyTeams(p);
 }
 let scrollKeep = null;
 function paint() {
@@ -817,6 +877,8 @@ const A = {
   csv() { sheet = null; renderSheet(); exportCsv(); },
   pe(b) { $('#se').value = b.dataset.e; markEmo(); },
   ptab(b) { const p = P(); if (!p) return; L.tab[p.id] = b.dataset.t; saveL(); sheet = null; render(); },
+  dwn(b) { L.dw = L.dw || {}; L.dw[curP] = +b.dataset.v; saveL(); paint(); },
+  dwnav(b) { L.do = L.do || {}; const v = +b.dataset.v; L.do[curP] = v ? (L.do[curP] || 0) + v * (L.dw?.[curP] || 8) : 0; saveL(); paint(); },
   flt(b) { L.flt[curP] = b.dataset.v; saveL(); render(); },
   states() { openSheet({ t: 'states' }); },
   iopen(b) { if (dragging) return; openInit(b.dataset.id); },
@@ -994,6 +1056,7 @@ document.addEventListener('change', e => {
     upd('inits', id, { st: t.value }); touch(); render(); return;
   }
   if (ch === 'tgn') { const v = t.value.trim().slice(0, 40); if (!v) { t.value = D()[t.dataset.k][id]?.n || ''; return; } upd(t.dataset.k, id, { n: v }); touch(); if (!sheet) render(); return; }
+  if (ch === 'tgcap') { const v = Math.min(99, Math.max(1, Math.round(+t.value) || 2)); t.value = v; upd('teams', id, { cap: v }); touch(); if (!sheet) render(); return; }
   if (ch === 'tgdn') { upd('states', id, { dn: t.checked }); touch(); return; }
 });
 /* Las fechas del plazo actualizan el contador de días sin perder lo escrito */
