@@ -415,3 +415,20 @@ body.rmfull .page{height:100dvh;display:flex;flex-direction:column;padding:12px 
 body.rmfull .legend{margin:8px 0}
 body.rmfull #body{flex:1;min-height:0;display:flex;flex-direction:column}
 body.rmfull .rm{flex:1;max-height:none;height:100%}
+
+/* Ordenar iniciativas arrastrando */
+.grip{flex:none;display:grid;place-items:center;width:26px;height:36px;margin-left:-6px;border:0;border-radius:8px;background:none;color:var(--mut);cursor:grab;touch-action:none;opacity:.55}
+.grip svg{width:18px;height:18px}
+.grip:hover,.grip:focus-visible{opacity:1;background:var(--line2)}
+.itr:hover .grip,.rr:hover .grip{opacity:1}
+.itc{display:flex;align-items:center;gap:4px;min-width:0}
+.itc .itn{flex:1}
+.rl{display:flex;align-items:stretch}
+.rl .grip{align-self:center;margin-left:4px;margin-right:-10px}
+.rl .rlb{flex:1;min-width:0}
+.itr,.rr{transition:transform .15s ease}
+.lift{position:relative;z-index:8;transition:none!important;background:var(--card);box-shadow:0 10px 28px rgba(0,0,0,.18);opacity:.97}
+.rr.lift .rl{background:var(--card)}
+body.sorting,body.sorting *{cursor:grabbing!important;user-select:none}
+@media(pointer:coarse){.grip{opacity:1;width:32px}}
+.rl.rlh{align-items:flex-end}

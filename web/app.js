@@ -77,7 +77,7 @@ const teamOf = id => { const t = D().teams[id]; return t && !t.del ? t : null; }
 const isDone = i => !!stateOf(i.st)?.dn;
 const PRIO = { urg: { n: 'Urgente', c: 'red', r: 0 }, high: { n: 'Alta', c: 'orange', r: 1 }, mid: { n: 'Media', c: 'yellow', r: 2 }, low: { n: 'Baja', c: 'gray', r: 3 }, '': { n: 'Sin prioridad', c: 'none', r: 4 } };
 const PRIO_KEYS = ['urg', 'high', 'mid', 'low', ''];
-const SORTS = { manual: 'Orden de carga', prio: 'Prioridad', dl: 'Deadline', st: 'Estado' };
+const SORTS = { manual: 'Orden manual', prio: 'Prioridad', dl: 'Deadline', st: 'Estado' };
 function sortedInits(p) {
   const k = L.sort[p.id] || 'manual', so = Object.fromEntries(statesOf(p.id).map((s, i) => [s.id, i]));
   const by = {
@@ -213,6 +213,7 @@ const I_LINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 const I_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/></svg>';
 const I_EXPAND = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
 const I_SHRINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
+const grip = (i) => `<button type="button" class="grip" data-g="${esc(i.id)}" aria-label="Mover «${esc(i.n)}». Arrastrá, o usá las flechas arriba y abajo" title="Arrastrá para ordenar"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></button>`;
 const I_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 const EMOS = ['🧭', '🚀', '📦', '🛠️', '📣', '💡', '📊', '🎯', '🧩', '🗂️', '🏗️', '📱', '💬', '🔧', '🌱', '⭐'];
 const COLN = { gray: 'Gris', orange: 'Naranja', teal: 'Turquesa', purple: 'Violeta', pink: 'Rosa', blue: 'Celeste', yellow: 'Amarillo', green: 'Verde', red: 'Rojo', forest: 'Verde oscuro', navy: 'Azul', brown: 'Marrón' };
@@ -300,7 +301,7 @@ function bodyInits(p) {
 ${rows.map(i => {
     const s = stateOf(i.st), late = i.dl && i.dl < t && !isDone(i), soon = i.dl && !late && dn(i.dl) - dn(t) <= 7 && !isDone(i);
     const tms = [...new Set(bl.filter(b => b.in === i.id).map(b => b.tm))].map(teamOf).filter(Boolean);
-    return `<div class="itr${isDone(i) ? ' done' : ''}" role="row"><button class="itn" data-a="iopen" data-id="${esc(i.id)}" role="cell"><span>${esc(i.n)}</span>${i.ln ? `<i class="lk" title="Tiene enlace">${I_LINK}</i>` : ''}${i.no ? '<i class="nt" title="Tiene notas">¶</i>' : ''}</button>
+    return `<div class="itr${isDone(i) ? ' done' : ''}" role="row" data-rid="${esc(i.id)}"><div class="itc" role="cell">${grip(i)}<button class="itn" data-a="iopen" data-id="${esc(i.id)}"><span>${esc(i.n)}</span>${i.ln ? `<i class="lk" title="Tiene enlace">${I_LINK}</i>` : ''}${i.no ? '<i class="nt" title="Tiene notas">¶</i>' : ''}</button></div>
 <span role="cell" class="cdl"><input class="in sm dl${late ? ' late' : soon ? ' soon' : ''}" type="date" value="${esc(i.dl)}" data-ch="dl" data-id="${esc(i.id)}" aria-label="Deadline de ${esc(i.n)}"></span>
 <span role="cell"><select class="tgs c-${s ? s.col : 'gray'}" data-ch="st" data-id="${esc(i.id)}" aria-label="Estado de ${esc(i.n)}">${s ? '' : '<option value="" selected>Sin estado</option>'}${stateOpts(p.id, i.st, true)}</select></span>
 <span role="cell"><select class="tgs p c-${PRIO[i.p].c}" data-ch="p" data-id="${esc(i.id)}" aria-label="Prioridad de ${esc(i.n)}">${prioOpts(i.p)}</select></span>
@@ -385,7 +386,7 @@ ${td >= 0 && td < T.n ? `<i class="tdh" style="left:${td * T.dw + T.dw / 2}px">H
     }
     const dl = r.kind === 'i' && r.i.dl ? dn(r.i.dl) - T.d0 : -1;
     const dlm = dl >= 0 && dl < T.n ? `<i class="dlm${isDone(r.i) ? ' ok' : ''}" style="left:${dl * T.dw + T.dw / 2}px" title="Deadline: ${esc(dm(r.i.dl))}"></i>` : '';
-    return `<div class="rr" data-row="${esc(r.key)}" data-k="${r.kind}"><div class="rl">${lab}</div><div class="rt" style="width:${W}px;min-height:${h}px">${dlm}${r.blocks.map(b => blockHtml(b, T, at[b.id], p)).join('')}</div></div>`;
+    return `<div class="rr" data-row="${esc(r.key)}" data-k="${r.kind}"${r.kind === 'i' ? ` data-rid="${esc(r.key)}"` : ''}><div class="rl">${r.kind === 'i' ? grip(r.i) : ''}${lab}</div><div class="rt" style="width:${W}px;min-height:${h}px">${dlm}${r.blocks.map(b => blockHtml(b, T, at[b.id], p)).join('')}</div></div>`;
   }).join('');
   return `<div id="rm" class="rm g-${T.g}" style="--dw:${T.dw}px"><div class="rmi" style="width:calc(var(--lw) + ${W}px)">${head}<div class="rb"><div class="rgl" style="width:${W}px">${lines}</div>${body}</div></div></div>`;
 }
@@ -724,7 +725,7 @@ document.addEventListener('pointerup', e => endDrag(e));
 document.addEventListener('pointercancel', e => endDrag(e, true));
 /* Teclado: flechas mueven el plazo un día; Mayús + flechas cambian el final */
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { if (drag) { endDrag(e, true); return; } if (sheet) { closeSheet(); return; } if (onb >= 0) { closeOnb(); return; } if (full) { setFull(false); return; } }
+  if (e.key === 'Escape') { if (rdrag) { endSort(true); return; } if (drag) { endDrag(e, true); return; } if (sheet) { closeSheet(); return; } if (onb >= 0) { closeOnb(); return; } if (full) { setFull(false); return; } }
   const blk = e.target.closest?.('.blk'); if (!blk || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
   e.preventDefault();
   const b = D().blocks[blk.dataset.b]; if (!b) return;
@@ -879,6 +880,71 @@ const A = {
   ofirst() { closeOnb(); openSheet({ t: 'newproj' }); },
   osample() { closeOnb(); A.sample(); }
 };
+/* ---------- Ordenar iniciativas (arrastrar el agarre ⋮⋮, o flechas arriba/abajo) ---------- */
+/* `vis` es el orden visible después del cambio; se integra al orden completo (respeta filtros) y pasa a "Orden manual". */
+function applyOrder(id, vis) {
+  const p = P(); if (!p) return;
+  const full = sortedInits(p).map(i => i.id).filter(x => x !== id), k = vis.indexOf(id);
+  const next = vis[k + 1], prev = vis[k - 1];
+  let at = next ? full.indexOf(next) : prev ? full.indexOf(prev) + 1 : 0;
+  if (at < 0) at = full.length;
+  full.splice(at, 0, id);
+  const u = now();
+  full.forEach((x, n) => { const i = D().inits[x]; if (i.o !== n + 1) { i.o = n + 1; i.u = u; } });
+  if ((L.sort[p.id] || 'manual') !== 'manual') { L.sort[p.id] = 'manual'; saveL(); toast('Orden cambiado a «Orden manual»'); }
+  touch(); render();
+}
+let rdrag = null;
+document.addEventListener('pointerdown', e => {
+  const g = e.target.closest('.grip'); if (!g) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const row = g.closest('[data-rid]'), box = row.parentElement;
+  const rows = [...box.children].filter(x => x.dataset.rid);
+  const b0 = box.getBoundingClientRect().top;
+  const rects = rows.map(r => { const b = r.getBoundingClientRect(); return { top: b.top - b0, h: b.height }; });
+  const idx = rows.indexOf(row);
+  rdrag = { row, rows, rects, box, idx, to: idx, y0: e.clientY - b0, moved: false, g };
+  g.setPointerCapture(e.pointerId); e.preventDefault();
+});
+document.addEventListener('pointermove', e => {
+  const d = rdrag; if (!d) return;
+  const rel = e.clientY - d.box.getBoundingClientRect().top, dy = rel - d.y0;
+  if (!d.moved && Math.abs(dy) < 4) return;
+  if (!d.moved) { d.moved = true; dragging = true; document.body.classList.add('sorting'); d.row.classList.add('lift'); }
+  const me = d.rects[d.idx], c = me.top + me.h / 2 + dy;
+  let to = d.idx;
+  for (let i = d.idx + 1; i < d.rows.length; i++) if (c > d.rects[i].top + d.rects[i].h / 2) to = i;
+  for (let i = d.idx - 1; i >= 0; i--) if (c < d.rects[i].top + d.rects[i].h / 2) to = i;
+  d.to = to;
+  d.rows.forEach((r, i) => { if (r === d.row) return; r.style.transform = d.idx < i && i <= to ? `translateY(${-me.h}px)` : to <= i && i < d.idx ? `translateY(${me.h}px)` : ''; });
+  d.row.style.transform = `translateY(${dy}px)`;
+  /* desplazar la pantalla (o el roadmap) cerca de los bordes */
+  const sc = d.box.closest('#rm');
+  if (sc) { const r = sc.getBoundingClientRect(); if (e.clientY > r.bottom - 40) sc.scrollTop += 12; else if (e.clientY < r.top + 70) sc.scrollTop -= 12; }
+  else if (e.clientY > innerHeight - 60) scrollBy(0, 14); else if (e.clientY < 90) scrollBy(0, -14);
+});
+function endSort(cancel) {
+  const d = rdrag; rdrag = null; if (!d) return;
+  document.body.classList.remove('sorting');
+  setTimeout(() => { dragging = false; }, 0);
+  d.rows.forEach(r => { r.style.transform = ''; r.classList.remove('lift'); });
+  if (cancel || !d.moved || d.to === d.idx) return;
+  const vis = d.rows.map(r => r.dataset.rid), [m] = vis.splice(d.idx, 1);
+  vis.splice(d.to, 0, m);
+  applyOrder(m, vis);
+}
+document.addEventListener('pointerup', () => endSort());
+document.addEventListener('pointercancel', () => endSort(true));
+document.addEventListener('keydown', e => {
+  const g = e.target.closest?.('.grip'); if (!g || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+  e.preventDefault();
+  const row = g.closest('[data-rid]'), vis = [...row.parentElement.children].filter(x => x.dataset.rid).map(x => x.dataset.rid);
+  const i = vis.indexOf(g.dataset.g), j = i + (e.key === 'ArrowUp' ? -1 : 1);
+  if (j < 0 || j >= vis.length) return;
+  [vis[i], vis[j]] = [vis[j], vis[i]];
+  applyOrder(g.dataset.g, vis);
+  $(`.grip[data-g="${CSS.escape(g.dataset.g)}"]`)?.focus();
+});
 function refreshTags() { if (sheet && sheet.t === 'states') renderSheet(); else render(); }
 document.addEventListener('click', e => {
   const blk = e.target.closest('.blk');

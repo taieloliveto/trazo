@@ -143,6 +143,28 @@ await step('filtrar y ordenar', async () => {
   await page.click('.chip[data-v=""]');
   await shot(page, '05-iniciativas');
 });
+await step('ordenar iniciativas arrastrando (listado)', async () => {
+  await page.selectOption('select[data-ch=sort]', 'manual');
+  const names = async () => page.locator('.itn span').allTextContents();
+  const before = await names();
+  const src = page.locator('.itr').nth(3).locator('.grip'), dst = page.locator('.itr').nth(0);
+  const a = await src.boundingBox(), b = await dst.boundingBox();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down();
+  await page.mouse.move(a.x + a.width / 2, a.y - 20, { steps: 4 });
+  await page.mouse.move(a.x + a.width / 2, b.y + 4, { steps: 8 });
+  await page.mouse.up();
+  const after = await names();
+  assert.equal(after[0], before[3]); assert.equal(after.length, 4);
+  // con flechas del teclado
+  await page.locator('.itr').nth(0).locator('.grip').focus();
+  await page.keyboard.press('ArrowDown');
+  assert.equal((await names())[1], before[3]);
+  // ordenar por prioridad y después arrastrar vuelve a "Orden manual"
+  await page.selectOption('select[data-ch=sort]', 'prio');
+  await page.locator('.itr').nth(0).locator('.grip').focus();
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.inputValue('select[data-ch=sort]'), 'manual');
+});
 await step('editar una iniciativa con enlace y notas', async () => {
   await page.click('.itn:has-text("QR y derivación autoinstalable")');
   await page.fill('#iln', 'no-es-url');
@@ -230,6 +252,22 @@ await step('roadmap: más plazos desde la ficha de la iniciativa', async () => {
   await page.waitForFunction(() => document.querySelectorAll('.blk').length === 3);
   await page.waitForTimeout(150);
   await shot(page, '08-roadmap-semana');
+});
+await step('ordenar iniciativas arrastrando (roadmap) y se refleja en el listado', async () => {
+  const names = async () => page.locator('.rr .rn').allTextContents();
+  const before = await names();
+  const src = page.locator('.rr').nth(0).locator('.grip'), last = page.locator('.rr').nth(3);
+  const a = await src.boundingBox(), b = await last.boundingBox();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down();
+  await page.mouse.move(a.x + a.width / 2, a.y + 30, { steps: 4 });
+  await page.mouse.move(a.x + a.width / 2, b.y + b.height - 4, { steps: 10 });
+  await page.mouse.up();
+  const after = await names();
+  assert.equal(after[3], before[0]);
+  await page.click('[data-a=ptab][data-t=inits]');
+  assert.deepEqual(await page.locator('.itn span').allTextContents(), after);
+  await page.click('[data-a=ptab][data-t=plan]');
+  await shot(page, '08b-roadmap-orden');
 });
 await step('granularidad: día, quincena y mes', async () => {
   for (const [g, name] of [['d', '09-roadmap-dia'], ['q', '10-roadmap-quincena'], ['m', '11-roadmap-mes']]) {
