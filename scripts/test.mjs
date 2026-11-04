@@ -52,6 +52,13 @@ await ok('limpia datos malos', () => {
   assert.deepEqual(Object.keys(s.blocks), ['b1']); assert.equal(s.blocks.b1.s, '2026-11-02'); assert.equal(s.blocks.b1.e, '2026-11-10');
   assert.equal(s.last, '');
 });
+await ok('sprints: limpia fechas, ids repetidos y combina', () => {
+  const s = sanitizeState({ sprints: { a: { pr: 'p', n: '', s: '2026-11-13', e: '2026-11-02', ins: ['x', 'x', 'no válido', 5], off: 99 }, b: { pr: 'p', n: 'Sin fechas' } } });
+  assert.deepEqual(Object.keys(s.sprints), ['a']);
+  const a = s.sprints.a; assert.equal(a.n, 'Sprint'); assert.equal(a.s, '2026-11-02'); assert.equal(a.e, '2026-11-13'); assert.deepEqual(a.ins, ['x']); assert.equal(a.off, 60);
+  const m = mergeState({ sprints: { a: { pr: 'p', n: 'SP 1', s: '2026-11-02', e: '2026-11-13', u: T } } }, { sprints: { a: { pr: 'p', n: 'SP 1', s: '2026-11-02', e: '2026-11-13', cl: true, dn: ['x'], u: T + 1 } } });
+  assert.equal(m.sprints.a.cl, true); assert.deepEqual(m.sprints.a.dn, ['x']);
+});
 await ok('tumbas viejas se descartan y se acota la cantidad', () => {
   const s = sanitizeState({ inits: { old: { pr: 'p', n: '', del: true, u: T - 40 * 86400000 }, nw: { pr: 'p', n: '', del: true, u: T } } }, T);
   assert.deepEqual(Object.keys(s.inits), ['nw']);

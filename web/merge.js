@@ -14,11 +14,14 @@
                   iniciativa · dl deadline 'AAAA-MM-DD' · st estado · p prioridad (urg|high|mid|low|'') · ln enlace · no notas
      blocks:   { id: { id, pr, in, tm, s, e, lb, c, u, del } }
                   plazo en la planificación: iniciativa `in`, equipo `tm`, del día `s` al día `e` (inclusive), etiqueta `lb`
+     sprints:  { id: { id, pr, n, s, e, off, goal, ins, dn, cl, c, u, del } }
+                  sprint: del día `s` al día `e` · off días no disponibles (feriados) · goal objetivo
+                  ins iniciativas incluidas · cl cerrado · dn iniciativas terminadas al cerrarlo
      last, lastU                                    último proyecto abierto
    } */
 
 const DAY = 86400000, TOMB_TTL = 30 * DAY;
-const LIM = { projects: 200, states: 2000, teams: 2000, inits: 5000, blocks: 12000 };
+const LIM = { projects: 200, states: 2000, teams: 2000, inits: 5000, blocks: 12000, sprints: 3000 };
 const idOk = s => typeof s === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(s);
 const str = (s, n) => typeof s === 'string' ? s.slice(0, n) : '';
 const num = x => Number.isFinite(+x) ? +x : 0;
@@ -43,7 +46,7 @@ function firstEmoji(s) {
   return isEmoji(g) ? g : '';
 }
 
-function emptyState() { return { name: '', nameU: 0, projects: {}, states: {}, teams: {}, inits: {}, blocks: {}, last: '', lastU: 0 }; }
+function emptyState() { return { name: '', nameU: 0, projects: {}, states: {}, teams: {}, inits: {}, blocks: {}, sprints: {}, last: '', lastU: 0 }; }
 
 const isObj = x => x && typeof x === 'object';
 const col = c => COLORS.includes(c) ? c : 'gray';
@@ -76,6 +79,17 @@ function fixBlock(r, id) {
   return { id, pr: r.pr, in: r.in, tm: idOk(r.tm) ? r.tm : '', s, e, lb: str(r.lb, 30).trim(), c: num(r.c), u: num(r.u), del };
 }
 
+const idList = (a, max) => Array.isArray(a) ? [...new Set(a.filter(idOk))].slice(0, max) : [];
+function fixSprint(r, id) {
+  if (!isObj(r) || !idOk(r.pr)) return null;
+  const del = !!r.del;
+  let s = ymdOk(r.s) ? r.s : '', e = ymdOk(r.e) ? r.e : '';
+  if (!s || !e) { if (!del) return null; s = s || '2000-01-01'; e = e || s; }
+  if (e < s) [s, e] = [e, s];
+  return { id, pr: r.pr, n: str(r.n, 60).trim() || 'Sprint', s, e, off: Math.min(60, Math.max(0, Math.round(num(r.off)))),
+    goal: del ? '' : str(r.goal, 1000), ins: del ? [] : idList(r.ins, 300), dn: del ? [] : idList(r.dn, 300), cl: !!r.cl, c: num(r.c), u: num(r.u), del };
+}
+
 /* Aplica `fix` a cada entrada, descarta tumbas viejas y acota la cantidad (se queda con lo más reciente). */
 function pruneMap(src, max, now, fix) {
   const out = {};
@@ -105,6 +119,7 @@ function sanitizeState(d, now) {
   out.teams = pruneMap(d.teams, LIM.teams, now, fixTag);
   out.inits = pruneMap(d.inits, LIM.inits, now, fixInit);
   out.blocks = pruneMap(d.blocks, LIM.blocks, now, fixBlock);
+  out.sprints = pruneMap(d.sprints, LIM.sprints, now, fixSprint);
   out.last = idOk(d.last) ? d.last : '';
   out.lastU = num(d.lastU);
   return out;
@@ -123,7 +138,7 @@ function mergeState(a, b, now) {
   a = sanitizeState(a, now);
   b = sanitizeState(b, now);
   const out = emptyState();
-  for (const k of ['projects', 'states', 'teams', 'inits', 'blocks']) out[k] = mergeMap(a[k], b[k]);
+  for (const k of ['projects', 'states', 'teams', 'inits', 'blocks', 'sprints']) out[k] = mergeMap(a[k], b[k]);
   const wl = a.lastU >= b.lastU ? a : b;
   out.last = wl.last; out.lastU = wl.lastU;
   const wn = a.nameU >= b.nameU ? a : b;

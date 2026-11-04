@@ -318,6 +318,65 @@ await step('tablero: indicadores, gráficos, capacidad y listas', async () => {
   await page.screenshot({ path: join(SHOTS, '12e-tablero-completo.png'), fullPage: true });
   await page.click('[data-a=ptab][data-t=plan]');
 });
+await step('sprints: crear con fechas, días disponibles, objetivo e iniciativas', async () => {
+  await page.click('[data-a=ptab][data-t=sprints]');
+  await page.click('[data-a=spnew]');
+  const mon = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().slice(0, 10); });
+  const fri2 = new Date(Date.parse(mon) + 11 * 86400000).toISOString().slice(0, 10);
+  await page.fill('#spn', 'SP 16');
+  await page.fill('#sps', mon); await page.fill('#spe', fri2);
+  await page.fill('#spo', '1');
+  await page.waitForFunction(() => document.querySelector('#spdays').textContent.startsWith('9 días disponibles'));
+  assert.ok((await page.textContent('#spdays')).includes('10 hábiles'));
+  await page.fill('#spg', 'Rediseño GDA listo para QA');
+  await page.check('.ck:has-text("Rediseño estructural GDA") input');
+  await page.check('.ck:has-text("Campaña post-mudanza") input');
+  await page.check('.ck:has-text("Comunicación preventiva") input');
+  assert.equal(await page.textContent('#spcnt'), '3');
+  await page.click('#sf button[type=submit]');
+  await page.waitForSelector('.spc.st-cur');
+  // el siguiente se propone solo: SP 17, a continuación
+  await page.click('[data-a=spnew]');
+  assert.equal(await page.inputValue('#spn'), 'SP 17');
+  assert.ok((await page.inputValue('#sps')) > fri2);
+  await page.check('.ck:has-text("QR y derivación") input');
+  await page.click('#sf button[type=submit]');
+  await page.waitForSelector('.spc.st-fut');
+  const sp = live((await data(page)).sprints);
+  assert.equal(sp.length, 2); assert.equal(sp.find(x => x.n === 'SP 16').off, 1); assert.equal(sp.find(x => x.n === 'SP 16').ins.length, 3);
+  await shot(page, '12f-sprints');
+});
+await step('sprint actual: reporte y cambiar estado desde ahí', async () => {
+  await page.click('[data-a=ptab][data-t=cur]');
+  await page.waitForSelector('.rep');
+  assert.ok((await page.textContent('.goalc')).includes('Rediseño GDA listo para QA'));
+  assert.equal(await page.locator('.rep .kpi').count(), 5);
+  assert.equal(await page.locator('.rtr').count(), 3);
+  await page.locator('.rtr', { hasText: 'Campaña post-mudanza' }).locator('select[data-ch=st]').selectOption({ label: 'Finalizado' });
+  await page.waitForFunction(() => document.querySelectorAll('.rtr.done').length === 2);
+  await page.screenshot({ path: join(SHOTS, '12g-sprint-actual.png'), fullPage: true });
+});
+await step('sprints en el roadmap', async () => {
+  await page.click('[data-a=ptab][data-t=plan]');
+  await page.waitForSelector('#rm.hs .spb');
+  assert.ok(await page.locator('.spb:has-text("SP 16")').count());
+  assert.ok(await page.locator('.spband').count());
+  assert.ok(await page.locator('.rlb .sptag').count() >= 3);
+  await shot(page, '12h-roadmap-sprints');
+});
+await step('cerrar sprint y pasar lo pendiente al próximo', async () => {
+  await page.click('[data-a=ptab][data-t=sprints]');
+  await page.click('.spc.st-cur [data-a=spclose]');
+  assert.ok(await page.isChecked('#spmv'));
+  await page.click('[data-a=spcloseok]');
+  await page.waitForSelector('.spc .tg:has-text("Finalizado")');
+  const sp = live((await data(page)).sprints), a = sp.find(x => x.n === 'SP 16'), b = sp.find(x => x.n === 'SP 17');
+  assert.equal(a.cl, true); assert.equal(a.dn.length, 2);
+  assert.equal(b.ins.length, 2, 'la que no terminó pasó a SP 17');
+  await page.click('.spc [data-a=spreopen]');
+  assert.equal(live((await data(page)).sprints).find(x => x.n === 'SP 16').cl, false);
+  await page.click('[data-a=ptab][data-t=plan]');
+});
 await step('roadmap en pantalla completa', async () => {
   await page.click('[data-a=full]');
   await page.waitForSelector('body.rmfull');
@@ -410,6 +469,12 @@ await step('pantalla vacía ofrece el ejemplo', async () => {
   assert.ok(await q.locator('.dlm').count() >= 3, 'marcas de deadline');
   await q.click('[data-a=ptab][data-t=inits]');
   await q.screenshot({ path: join(SHOTS, '19-ejemplo-iniciativas.png') });
+  await q.click('[data-a=ptab][data-t=cur]');
+  await q.waitForSelector('.rep');
+  await q.screenshot({ path: join(SHOTS, '19c-ejemplo-sprint-actual.png'), fullPage: true });
+  await q.click('[data-a=ptab][data-t=sprints]');
+  assert.equal(await q.locator('.spc').count(), 3);
+  await q.screenshot({ path: join(SHOTS, '19d-ejemplo-sprints.png'), fullPage: true });
   await q.click('[data-a=ptab][data-t=dash]');
   await q.waitForSelector('.hm');
   assert.ok(await q.locator('.hm td.lv4, .hm td.lv3, .hm td.lv2, .hm td.lv1').count() > 0);

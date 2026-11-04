@@ -75,6 +75,23 @@ const blocksOf = pr => live(D().blocks).filter(b => b.pr === pr && D().inits[b.i
 const stateOf = id => { const s = D().states[id]; return s && !s.del ? s : null; };
 const teamOf = id => { const t = D().teams[id]; return t && !t.del ? t : null; };
 const isDone = i => !!stateOf(i.st)?.dn;
+/* Sprints */
+const sprintsOf = pr => live(D().sprints).filter(x => x.pr === pr).sort((a, b) => a.s.localeCompare(b.s) || a.c - b.c);
+const spSt = sp => sp.cl || sp.e < today() ? 'done' : sp.s > today() ? 'fut' : 'cur';
+const SPST = { cur: ['En curso', 'navy'], fut: ['Futuro', 'gray'], done: ['Finalizado', 'forest'] };
+function workDays(a, b) { let n = 0; for (let d = dn(a), z = dn(b); d <= z; d++) { const w = wday(d); if (w && w !== 6) n++; } return n; }
+const availDays = sp => Math.max(0, workDays(sp.s, sp.e) - (sp.off || 0));
+const spInits = sp => sp.ins.map(id => D().inits[id]).filter(i => i && !i.del);
+const spDone = (sp, i) => sp.cl ? sp.dn.includes(i.id) : isDone(i);
+/* Sprints abiertos (en curso o futuros) que incluyen una iniciativa */
+const openSprintsOf = (pr, id) => sprintsOf(pr).filter(x => spSt(x) !== 'done' && x.ins.includes(id));
+function nextSprintDraft(pr) {
+  const all = sprintsOf(pr), last = all[all.length - 1];
+  if (!last) { const s = mondayOf(today()); return { id: '', n: 'Sprint 1', s, e: addD(s, 11), off: 0, goal: '', ins: [] }; }
+  const m = last.n.match(/^(.*?)(\d+)\s*$/);
+  let s = addD(last.e, 1); while ([0, 6].includes(wday(dn(s)))) s = addD(s, 1);
+  return { id: '', n: m ? m[1] + (+m[2] + 1) : `Sprint ${all.length + 1}`, s, e: addD(s, dn(last.e) - dn(last.s)), off: 0, goal: '', ins: [] };
+}
 const PRIO = { urg: { n: 'Urgente', c: 'red', r: 0 }, high: { n: 'Alta', c: 'orange', r: 1 }, mid: { n: 'Media', c: 'yellow', r: 2 }, low: { n: 'Baja', c: 'gray', r: 3 }, '': { n: 'Sin prioridad', c: 'none', r: 4 } };
 const PRIO_KEYS = ['urg', 'high', 'mid', 'low', ''];
 const SORTS = { manual: 'Orden manual', prio: 'Prioridad', dl: 'Deadline', st: 'Estado' };
@@ -198,6 +215,11 @@ function sampleProject() {
     const i = newInit(p.id, { n, dl: dl ? addD(mon, dl) : '', st: sts[s], p: pr, o: k + 1 });
     bl.forEach(([t, a, len, lb]) => put('blocks', { pr: p.id, in: i.id, tm: tm[t], s: addD(mon, a), e: addD(mon, a + len - 1), lb: lb || '' }));
   });
+  /* tres sprints de dos semanas: el anterior (cerrado), el actual y el próximo */
+  const ins = Object.values(D().inits).filter(i => i.pr === p.id).sort((a, b) => a.o - b.o).map(i => i.id);
+  put('sprints', { pr: p.id, n: 'Sprint 15', s: addD(mon, -14), e: addD(mon, -3), off: 0, goal: 'Cerrar la automatización de órdenes y arrancar el rediseño de agenda.', ins: [ins[4], ins[0]], dn: [ins[4]], cl: true });
+  put('sprints', { pr: p.id, n: 'Sprint 16', s: mon, e: addD(mon, 11), off: 1, goal: 'Rediseño de agenda en desarrollo y campaña post-instalación lista para QA.', ins: [ins[0], ins[1], ins[3], ins[2]], dn: [], cl: false });
+  put('sprints', { pr: p.id, n: 'Sprint 17', s: addD(mon, 14), e: addD(mon, 25), off: 0, goal: 'QR y derivación a autogestión en desarrollo.', ins: [ins[2], ins[5]], dn: [], cl: false });
   touch();
   return p;
 }
@@ -270,11 +292,11 @@ function projCard(p) {
 }
 
 /* ---------- Proyecto ---------- */
-const TABS = [['inits', 'Iniciativas'], ['plan', 'Roadmap'], ['teams', 'Equipos'], ['dash', 'Tablero']];
+const TABS = [['inits', 'Iniciativas'], ['plan', 'Roadmap'], ['sprints', 'Sprints'], ['cur', 'Sprint actual'], ['teams', 'Equipos'], ['dash', 'Tablero']];
 const tabOf = p => L.tab[p.id] || 'inits';
 function vProject() {
   const p = P(); if (!p) return '';
-  const t = tabOf(p), cnt = { inits: initsOf(p.id).length, teams: teamsOf(p.id).length };
+  const t = tabOf(p), cnt = { inits: initsOf(p.id).length, teams: teamsOf(p.id).length, sprints: sprintsOf(p.id).length, cur: sprintsOf(p.id).filter(x => spSt(x) === 'cur').length || undefined };
   return `<div class="page ${t === 'plan' ? 'wide' : ''}"><div class="ph pj"><h1 class="vh">${esc(p.n)}</h1>
 <div class="tabs" role="tablist" aria-label="Secciones del proyecto">${TABS.map(([k, n]) => `<button role="tab" data-a="ptab" data-t="${k}" aria-selected="${t === k}">${n}${cnt[k] !== undefined ? ` <span class="cn">${cnt[k]}</span>` : ''}</button>`).join('')}</div></div>
 ${t === 'inits' ? shellInits(p) : t === 'plan' ? shellPlan(p) : ''}<div id="body"></div></div>`;
@@ -367,11 +389,14 @@ function bodyPlan(p) {
   const T = tl(p), { months, segs } = segsOf(T), W = T.n * T.dw, rs = rowsOf(p), td = dn(today()) - T.d0;
   if (p.gb === 't' && !teamsOf(p.id).length) return `<div class="empty"><div class="big" aria-hidden="true">👥</div><p><b>Agregá equipos o personas</b> para ver la carga de cada uno.</p><button class="btn auto" data-a="ptab" data-t="teams">Ir a Equipos</button></div>`;
   if (p.gb !== 't' && !rs.length) return `<div class="empty"><div class="big" aria-hidden="true">🗓️</div><p><b>Primero cargá iniciativas.</b> Después las planificás acá, por equipo.</p><button class="btn auto" data-a="ptab" data-t="inits">Ir a Iniciativas</button></div>`;
-  const head = `<div class="rh"><div class="rl rlh">${p.gb === 't' ? 'Equipo / persona' : 'Iniciativa'}</div><div class="rt rth" style="width:${W}px">
+  const sps = sprintsOf(p.id).filter(x => dn(x.e) >= T.d0 && dn(x.s) <= T.d0 + T.n - 1);
+  const spRow = sps.length ? `<div class="sprow">${sps.map(x => { const a = Math.max(0, dn(x.s) - T.d0), z = Math.min(T.n - 1, dn(x.e) - T.d0), st = spSt(x); return `<button class="spb st-${st}" data-a="spedit" data-id="${esc(x.id)}" style="left:${a * T.dw}px;width:${(z - a + 1) * T.dw}px" title="${esc(x.n)}: ${esc(dm(x.s))} → ${esc(dm(x.e))} · ${SPST[st][0]} · ${x.ins.length} iniciativas${x.goal ? ' · ' + esc(x.goal) : ''}">${esc(x.n)}</button>`; }).join('')}</div>` : '';
+  const head = `<div class="rh"><div class="rl rlh">${p.gb === 't' ? 'Equipo / persona' : 'Iniciativa'}</div><div class="rt rth" style="width:${W}px">${spRow}
 <div class="mrow">${months.map(m => `<div class="mc" style="left:${m.st * T.dw}px;width:${m.len * T.dw}px"><span>${cap(MON[+m.ym.slice(5) - 1])} ${m.ym.slice(0, 4)}</span></div>`).join('')}</div>
 ${T.g === 'm' ? '' : `<div class="srow">${segs.map(s => { const lab = T.g === 'q' ? (s.k ? '2ª quincena' : '1ª quincena') : T.g === 'w' ? 'S' + (s.k + 1) : `${DOW1[wday(T.d0 + s.st)]}<b>${s.a}</b>`; const we = T.g === 'd' && [0, 6].includes(wday(T.d0 + s.st)); const isT = td >= s.st && td < s.st + s.len; return `<div class="sc${we ? ' we' : ''}${isT ? ' now' : ''}" style="left:${s.st * T.dw}px;width:${s.len * T.dw}px">${lab}</div>`; }).join('')}</div>`}
 ${td >= 0 && td < T.n ? `<i class="tdh" style="left:${td * T.dw + T.dw / 2}px">Hoy</i>` : ''}</div></div>`;
   let lines = segs.map(s => `<i class="gl${s.first ? ' gm' : ''}" style="left:${s.st * T.dw}px"></i>`).join('');
+  lines += sps.filter(x => spSt(x) === 'cur').map(x => { const a = Math.max(0, dn(x.s) - T.d0), z = Math.min(T.n - 1, dn(x.e) - T.d0); return `<i class="spband" style="left:${a * T.dw}px;width:${(z - a + 1) * T.dw}px"></i>`; }).join('');
   if (T.g === 'd') lines += segs.filter(s => [0, 6].includes(wday(T.d0 + s.st))).map(s => `<i class="gwe" style="left:${s.st * T.dw}px;width:${T.dw}px"></i>`).join('');
   if (td >= 0 && td < T.n) lines += `<i class="tdy" style="left:${td * T.dw + T.dw / 2}px"></i>`;
   const body = rs.map(r => {
@@ -379,7 +404,7 @@ ${td >= 0 && td < T.n ? `<i class="tdh" style="left:${td * T.dw + T.dw / 2}px">H
     let lab;
     if (r.kind === 'i') {
       const i = r.i, s = stateOf(i.st), late = i.dl && i.dl < today() && !isDone(i);
-      lab = `<button class="rlb" data-a="iopen" data-id="${esc(i.id)}"><span class="rn">${esc(i.n)}</span><small>${s ? `<i class="dot c-${s.col}"></i>${esc(s.n)}` : ''}${i.p ? ` · <span class="pt-${i.p}">${PRIO[i.p].n}</span>` : ''}${i.dl ? ` · <span class="${late ? 'late' : ''}">${esc(dm(i.dl))}</span>` : ''}</small></button>`;
+      lab = `<button class="rlb" data-a="iopen" data-id="${esc(i.id)}"><span class="rn">${esc(i.n)}</span><small>${s ? `<i class="dot c-${s.col}"></i>${esc(s.n)}` : ''}${i.p ? ` · <span class="pt-${i.p}">${PRIO[i.p].n}</span>` : ''}${i.dl ? ` · <span class="${late ? 'late' : ''}">${esc(dm(i.dl))}</span>` : ''}${(() => { const y = openSprintsOf(p.id, i.id)[0]; return y ? ` · <span class="sptag">${esc(y.n)}</span>` : ''; })()}</small></button>`;
     } else {
       const days = r.blocks.reduce((a, b) => a + dn(b.e) - dn(b.s) + 1, 0);
       lab = `<div class="rlb tm"><span class="rn"><i class="dot c-${r.t ? r.t.col : 'gray'}"></i>${esc(r.t ? r.t.n : 'Sin equipo')}</span><small>${r.blocks.length} ${r.blocks.length === 1 ? 'plazo' : 'plazos'}${days ? ` · ${days} días` : ''}</small></div>`;
@@ -388,7 +413,7 @@ ${td >= 0 && td < T.n ? `<i class="tdh" style="left:${td * T.dw + T.dw / 2}px">H
     const dlm = dl >= 0 && dl < T.n ? `<i class="dlm${isDone(r.i) ? ' ok' : ''}" style="left:${dl * T.dw + T.dw / 2}px" title="Deadline: ${esc(dm(r.i.dl))}"></i>` : '';
     return `<div class="rr" data-row="${esc(r.key)}" data-k="${r.kind}"${r.kind === 'i' ? ` data-rid="${esc(r.key)}"` : ''}><div class="rl">${r.kind === 'i' ? grip(r.i) : ''}${lab}</div><div class="rt" style="width:${W}px;min-height:${h}px">${dlm}${r.blocks.map(b => blockHtml(b, T, at[b.id], p)).join('')}</div></div>`;
   }).join('');
-  return `<div id="rm" class="rm g-${T.g}" style="--dw:${T.dw}px"><div class="rmi" style="width:calc(var(--lw) + ${W}px)">${head}<div class="rb"><div class="rgl" style="width:${W}px">${lines}</div>${body}</div></div></div>`;
+  return `<div id="rm" class="rm g-${T.g}${sps.length ? ' hs' : ''}" style="--dw:${T.dw}px"><div class="rmi" style="width:calc(var(--lw) + ${W}px)">${head}<div class="rb"><div class="rgl" style="width:${W}px">${lines}</div>${body}</div></div></div>`;
 }
 
 /* --- Equipos --- */
@@ -405,6 +430,78 @@ ${kind === 'teams' ? `<label class="capc" title="Cuántas iniciativas puede llev
 <button class="icon xs dng" data-a="tgdel" data-k="${kind}" data-id="${esc(x.id)}" aria-label="Eliminar ${esc(x.n)}">${I_TRASH}</button></div>`; }).join('') || `<p class="mut small">${kind === 'states' ? 'No hay estados.' : 'Todavía no hay equipos ni personas.'}</p>`}</div>
 <form class="tga" data-k="${kind}" autocomplete="off"><input class="in" type="text" maxlength="40" placeholder="${kind === 'states' ? 'Nuevo estado (ej. En refinamiento)' : 'Nuevo equipo o persona (ej. QA, Ana)'}" aria-label="${kind === 'states' ? 'Nuevo estado' : 'Nuevo equipo o persona'}"><button class="btn auto" type="submit">Agregar</button></form>`;
 }
+/* --- Sprints: crear, editar y agrupar --- */
+const pbar = (pct, cls = '') => `<span class="pbar ${cls}" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, pct))}%"></i></span>`;
+function bodySprints(p) {
+  const sp = sprintsOf(p.id);
+  const head = `<div class="sph"><div><h2>Sprints</h2><p class="mut small">Fechas, días disponibles, objetivo e iniciativas de cada sprint. También se ven en el roadmap.</p></div><button class="btn auto" data-a="spnew">+ Nuevo sprint</button></div>`;
+  if (!sp.length) return head + `<div class="empty"><div class="big" aria-hidden="true">🏃</div><p><b>Todavía no hay sprints.</b></p><p class="mut">Creá el primero: fechas, objetivo y las iniciativas que entran.</p></div>`;
+  return head + [['cur', 'En curso'], ['fut', 'Futuros'], ['done', 'Finalizados']].map(([k, n]) => {
+    let xs = sp.filter(x => spSt(x) === k); if (k === 'done') xs = xs.reverse();
+    return xs.length ? `<h3 class="grp">${n} <span class="cn">${xs.length}</span></h3><div class="spgrid">${xs.map(spCard).join('')}</div>` : '';
+  }).join('');
+}
+function spCard(sp) {
+  const st = spSt(sp), is = spInits(sp), d = is.filter(i => spDone(sp, i)).length, pct = is.length ? Math.round(d / is.length * 100) : 0, open = st === 'done' && !sp.cl;
+  return `<article class="spc st-${st}"><div class="spt"><b>${esc(sp.n)}</b>${chip(open ? 'Sin cerrar' : SPST[st][0], open ? 'orange' : SPST[st][1])}<span class="grow"></span><button class="icon sm" data-a="spedit" data-id="${esc(sp.id)}" aria-label="Editar ${esc(sp.n)}">${I_DOTS}</button></div>
+<small class="mut">${esc(dm(sp.s))} → ${esc(dm(sp.e))} · <b>${availDays(sp)}</b> días disponibles${sp.off ? ` (${workDays(sp.s, sp.e)} hábiles − ${sp.off})` : ''}</small>
+${sp.goal ? `<p class="goal"><b>Objetivo</b>${esc(sp.goal)}</p>` : '<p class="goal none">Sin objetivo definido</p>'}
+<div class="spis">${is.map(i => { const s = stateOf(i.st); return `<button class="spi${spDone(sp, i) ? ' ok' : ''}" data-a="iopen" data-id="${esc(i.id)}" title="${esc(s ? s.n : '')}"><i class="dot c-${s ? s.col : 'gray'}"></i><span>${esc(i.n)}</span></button>`; }).join('') || '<span class="mut small">Sin iniciativas</span>'}</div>
+<div class="spf">${pbar(pct)}<small>${d} de ${is.length} terminadas</small></div>
+<div class="spa">${st === 'cur' ? '<button class="mini" data-a="ptab" data-t="cur">Ver reporte</button>' : ''}${st === 'cur' || open ? `<button class="mini" data-a="spclose" data-id="${esc(sp.id)}">Cerrar sprint</button>` : ''}${sp.cl ? `<button class="mini" data-a="spreopen" data-id="${esc(sp.id)}">Reabrir</button>` : ''}</div></article>`;
+}
+
+/* --- Sprint actual: reporte --- */
+function bodyCur(p) {
+  const all = sprintsOf(p.id), cur = all.filter(x => spSt(x) === 'cur');
+  if (!cur.length) {
+    const fut = all.find(x => spSt(x) === 'fut');
+    return `<div class="empty"><div class="big" aria-hidden="true">🗓️</div><p><b>No hay ningún sprint en curso.</b></p><p class="mut">${fut ? `El próximo es <b>${esc(fut.n)}</b> y empieza el ${esc(dm(fut.s))}.` : 'Creá un sprint con fechas que incluyan hoy para ver su reporte acá.'}</p><div class="erow2"><button class="btn auto" data-a="spnew">+ Nuevo sprint</button><button class="btn ghost auto" data-a="ptab" data-t="sprints">Ver sprints</button></div></div>`;
+  }
+  return cur.map(sp => spReport(p, sp)).join('');
+}
+function spReport(p, sp) {
+  const t = today(), is = spInits(sp), done = is.filter(isDone), total = is.length;
+  const wdT = Math.max(1, workDays(sp.s, sp.e)), av = availDays(sp), el = workDays(sp.s, t), left = t < sp.e ? workDays(addD(t, 1), sp.e) : 0;
+  const tp = Math.round(el / wdT * 100), wp = total ? Math.round(done.length / total * 100) : 0;
+  const late = is.filter(i => !isDone(i) && i.dl && i.dl < t);
+  const diff = wp - tp;
+  const pace = !total ? ['', 'Sin iniciativas', ''] : diff >= -10 ? ['ok', 'En ritmo', ICO_OK] : diff >= -30 ? ['warn', 'Algo atrasado', ICO_CLOCK] : ['bad', 'Atrasado', ICO_WARN];
+  const tile = (n, lab, sub, cls = '', ico = '') => `<div class="kpi ${cls}"><span class="kl">${ico}${lab}</span><b>${n}</b><small>${sub}</small></div>`;
+  /* por estado */
+  const sts = statesOf(p.id).map(s => ({ s, n: is.filter(i => i.st === s.id).length })).filter(x => x.n), mx = Math.max(1, ...sts.map(x => x.n));
+  /* equipos: días planificados dentro del sprint contra días disponibles × capacidad */
+  const bl = blocksOf(p.id).filter(b => sp.ins.includes(b.in) && b.s <= sp.e && b.e >= sp.s);
+  const teams = teamsOf(p.id).map(x => {
+    const mine = bl.filter(b => b.tm === x.id), days = mine.reduce((a, b) => a + workDays(b.s > sp.s ? b.s : sp.s, b.e < sp.e ? b.e : sp.e), 0);
+    const capD = av * capOf(x), pc = capD ? Math.round(days / capD * 100) : 0;
+    return { x, n: new Set(mine.map(b => b.in)).size, days, capD, pc };
+  }).filter(r => r.n);
+  const noPlan = is.filter(i => !isDone(i) && !bl.some(b => b.in === i.id));
+  const rows = [...is].sort((a, b) => (isDone(a) - isDone(b)) || PRIO[a.p].r - PRIO[b.p].r);
+  return `<div class="dash rep"><div class="reph"><div><h2>${esc(sp.n)} <span class="tg c-navy">En curso</span></h2><p class="mut">${esc(dm(sp.s))} → ${esc(dm(sp.e))} · día ${Math.min(el, wdT)} de ${wdT} hábiles${sp.off ? ` · ${sp.off} no disponibles` : ''}</p></div>
+<div class="chc"><button class="mini" data-a="spedit" data-id="${esc(sp.id)}">Editar sprint</button><button class="mini" data-a="spclose" data-id="${esc(sp.id)}">Cerrar sprint</button></div></div>
+<section class="card goalc"><span class="kl">Objetivo del sprint</span><p>${sp.goal ? esc(sp.goal) : '<span class="mut">Sin objetivo definido. <button class="lnk" data-a="spedit" data-id="' + esc(sp.id) + '">Agregar objetivo</button></span>'}</p></section>
+<div class="kpis">
+${tile(total, 'Iniciativas', `${done.length} terminadas · ${total - done.length} abiertas`)}
+${tile(wp + '%', 'Terminado', `${pbar(wp, 'ok')}${done.length} de ${total}`, 'ok', ICO_OK)}
+${tile(left, 'Días restantes', `hábiles · ${tp}% del tiempo transcurrido`, '', ICO_CLOCK)}
+${tile(pace[1], 'Ritmo', total ? `${wp}% hecho con ${tp}% del tiempo` : 'Sumá iniciativas al sprint', pace[0], pace[2])}
+${tile(late.length, 'Atrasadas', late.length ? 'Deadline vencido sin terminar' : 'Nada vencido', late.length ? 'bad' : '', ICO_WARN)}</div>
+<div class="dgrid2"><section class="card"><h2>Tiempo vs. avance</h2><div class="hb">
+<div class="hbr" title="Tiempo transcurrido: ${el} de ${wdT} días hábiles"><span>Tiempo transcurrido</span><span class="hbt"><i class="tm" style="width:${tp}%"></i></span><b>${tp}%</b></div>
+<div class="hbr" title="Trabajo terminado: ${done.length} de ${total} iniciativas"><span>Trabajo terminado</span><span class="hbt"><i class="pl" style="width:${wp}%"></i></span><b>${wp}%</b></div></div>
+<p class="mut small" style="margin-top:12px">Si el avance queda muy por detrás del tiempo, el sprint está en riesgo.</p></section>
+<section class="card"><h2>Iniciativas por estado</h2>${sts.length ? `<div class="hb">${sts.map(({ s, n }) => `<div class="hbr" title="${esc(s.n)}: ${n}"><span><i class="dot c-${s.col}"></i>${esc(s.n)}</span><span class="hbt"><i class="c-${s.col}" style="width:${n / mx * 100}%"></i></span><b>${n}</b></div>`).join('')}</div>` : '<p class="mut small">El sprint no tiene iniciativas.</p>'}</section></div>
+<section class="card"><h2>Carga de equipos en el sprint</h2><p class="mut small">Días hábiles planificados en el roadmap dentro del sprint, contra días disponibles × capacidad.</p>${teams.length ? `<div class="hb">${teams.map(r => `<div class="hbr wide" title="${esc(r.x.n)}: ${r.days} días planificados de ${r.capD} disponibles (${av} días × capacidad ${capOf(r.x)})"><span><i class="dot c-${r.x.col}"></i>${esc(r.x.n)} <small class="mut">· ${r.n} inic.</small></span><span class="hbt"><i class="${r.pc > 100 ? 'lt' : 'pl'}" style="width:${Math.min(100, r.pc)}%"></i></span><b class="${r.pc > 100 ? 'late' : ''}">${r.pc > 100 ? ICO_WARN : ''}${r.days}/${r.capD} días</b></div>`).join('')}</div>` : '<p class="mut small">Las iniciativas del sprint todavía no tienen plazos en el roadmap dentro de estas fechas.</p>'}
+${noPlan.length ? `<p class="small warnt" style="margin-top:12px">${ICO_WARN} ${noPlan.length} ${noPlan.length === 1 ? 'iniciativa abierta no tiene' : 'iniciativas abiertas no tienen'} plazos dentro del sprint: ${noPlan.map(i => esc(i.n)).join(', ')}.</p>` : ''}</section>
+<section class="card"><h2>Iniciativas del sprint <span class="cn">${total}</span></h2>${total ? `<div class="rtbl">${rows.map(i => { const s = stateOf(i.st), lt = !isDone(i) && i.dl && i.dl < t; const tms = [...new Set(bl.filter(b => b.in === i.id).map(b => b.tm))].map(teamOf).filter(Boolean); return `<div class="rtr${isDone(i) ? ' done' : ''}"><button class="itn" data-a="iopen" data-id="${esc(i.id)}"><span>${esc(i.n)}</span></button>
+<select class="tgs c-${s ? s.col : 'gray'}" data-ch="st" data-id="${esc(i.id)}" aria-label="Estado de ${esc(i.n)}">${s ? '' : '<option value="" selected>Sin estado</option>'}${stateOpts(p.id, i.st)}</select>
+<span class="small">${i.p ? `<span class="pt-${i.p}">${PRIO[i.p].n}</span>` : '<span class="mut">—</span>'}</span>
+<span class="small ${lt ? 'late' : 'mut'}">${i.dl ? (lt ? ICO_WARN + ' ' : '') + esc(dm(i.dl)) : 'Sin deadline'}</span>
+<span class="tms">${tms.map(x => `<i class="dot c-${x.col}" title="${esc(x.n)}"></i>`).join('')}${tms.length ? `<small>${tms.map(x => esc(x.n)).join(', ')}</small>` : '<small class="mut">Sin plazos</small>'}</span></div>`; }).join('')}</div>` : `<p class="mut small">Sumá iniciativas desde <button class="lnk" data-a="spedit" data-id="${esc(sp.id)}">Editar sprint</button>.</p>`}</section></div>`;
+}
+
 /* --- Tablero --- */
 const capOf = t => t.cap || 2;
 const WEEKS = [4, 8, 12];
@@ -492,7 +589,7 @@ function vSet() {
 function bodyHtml() {
   const p = P(); if (view !== 'project' || !p) return '';
   const t = tabOf(p);
-  return t === 'inits' ? bodyInits(p) : t === 'plan' ? bodyPlan(p) : t === 'dash' ? bodyDash(p) : bodyTeams(p);
+  return t === 'inits' ? bodyInits(p) : t === 'plan' ? bodyPlan(p) : t === 'dash' ? bodyDash(p) : t === 'sprints' ? bodySprints(p) : t === 'cur' ? bodyCur(p) : bodyTeams(p);
 }
 let scrollKeep = null;
 function paint() {
@@ -572,6 +669,29 @@ function projForm(title, n, e, btn) {
 ${sheet.t === 'newproj' ? '<p class="mut small">Se crea con los estados Por hacer, En curso, Finalizado y Bloqueado. Los podés cambiar cuando quieras.</p>' : ''}
 <button class="btn" type="submit">${btn}</button><button class="btn ghost" type="button" data-a="close">Cancelar</button></form>`;
 }
+function sprintSheet() {
+  const x = sheet.draft, p = P(), isNew = !x.id, is = sortedInits(p);
+  return `<form id="sf" novalidate class="sh wide" data-f="sprint" role="dialog" aria-modal="true" aria-label="${isNew ? 'Nuevo sprint' : 'Editar sprint'}"><h2>${isNew ? 'Nuevo sprint' : 'Editar sprint'}</h2>
+<label class="f">Nombre<input id="spn" type="text" maxlength="60" value="${esc(x.n)}" autocomplete="off" placeholder="Ej. SP 17"></label>
+<div class="three"><label class="f">Inicio<input id="sps" type="date" value="${esc(x.s)}"></label><label class="f">Fin<input id="spe" type="date" value="${esc(x.e)}"></label>
+<label class="f">Días no disponibles<input id="spo" type="number" min="0" max="60" inputmode="numeric" value="${x.off || 0}" title="Feriados, días de planning, etc."></label></div>
+<p class="spdays" id="spdays">${spDaysTxt(x)}</p>
+<label class="f">Objetivo del sprint<textarea id="spg" rows="2" maxlength="1000" placeholder="¿Qué queremos lograr en este sprint?">${esc(x.goal)}</textarea></label>
+<div class="lab">Iniciativas del sprint · <span id="spcnt">${x.ins.length}</span> elegidas</div>
+<div class="spchk">${is.map(i => { const s = stateOf(i.st), oth = openSprintsOf(p.id, i.id).filter(y => y.id !== x.id).map(y => y.n).join(', '); return `<label class="ck"><input type="checkbox" data-sp="${esc(i.id)}"${x.ins.includes(i.id) ? ' checked' : ''}><span class="ckn">${esc(i.n)}</span>${s ? chip(s.n, s.col) : ''}${oth ? `<small class="mut">también en ${esc(oth)}</small>` : ''}</label>`; }).join('') || '<p class="mut small">Todavía no hay iniciativas en el proyecto.</p>'}</div>
+<p class="err" role="alert">${esc(sheet.err || '')}</p>
+<button class="btn" type="submit">${isNew ? 'Crear sprint' : 'Guardar'}</button>${isNew ? '' : '<button class="btn danger" type="button" data-a="spdel">Eliminar sprint</button>'}<button class="btn ghost" type="button" data-a="close">Cancelar</button></form>`;
+}
+function spDaysTxt(x) {
+  if (!x.s || !x.e || x.e < x.s) return 'Elegí las fechas de inicio y fin.';
+  const wd = workDays(x.s, x.e), av = Math.max(0, wd - (+x.off || 0));
+  return `<b>${av} ${av === 1 ? 'día disponible' : 'días disponibles'}</b> · ${wd} hábiles (lunes a viernes) · ${dn(x.e) - dn(x.s) + 1} corridos`;
+}
+function readSprint() {
+  const x = sheet.draft, v = id => ($('#' + id) || {}).value;
+  if (!$('#spn')) return;
+  Object.assign(x, { n: v('spn'), s: v('sps') || '', e: v('spe') || '', off: Math.min(60, Math.max(0, Math.round(+v('spo') || 0))), goal: v('spg') || '', ins: $$('[data-sp]').filter(c => c.checked).map(c => c.dataset.sp) });
+}
 function initSheet() {
   const x = sheet.draft, p = P(), isNew = !x.id;
   const bl = isNew ? [] : blocksOf(p.id).filter(b => b.in === x.id).sort((a, b) => a.s.localeCompare(b.s));
@@ -584,6 +704,7 @@ function initSheet() {
 ${x.ln && /^https?:\/\//i.test(x.ln) ? `<a class="lnk ext" href="${esc(x.ln)}" target="_blank" rel="noopener noreferrer">${I_LINK} Abrir enlace</a>` : ''}
 <label class="f">Notas<textarea id="ino" maxlength="2000" rows="3" placeholder="Contexto, alcance, dependencias…">${esc(x.no)}</textarea></label>
 ${isNew ? '' : `<div class="lab">Plazos por equipo</div><div class="bls">${bl.map(b => { const t = teamOf(b.tm); return `<button type="button" class="blr" data-a="bopen" data-id="${esc(b.id)}">${chip(t ? t.n : 'Sin equipo', t ? t.col : 'gray')}${b.lb ? `<em>${esc(b.lb)}</em>` : ''}<span class="mut">${esc(dm(b.s))} → ${esc(dm(b.e))}</span></button>`; }).join('') || '<p class="mut small">Todavía no tiene plazos.</p>'}<button type="button" class="lnk" data-a="badd">+ Agregar plazo</button></div>`}
+${isNew ? '' : (() => { const sps = sprintsOf(p.id).filter(y => y.ins.includes(x.id)); return sps.length ? `<div class="lab">Sprints</div><div class="chips">${sps.map(y => chip(y.n, SPST[spSt(y)][1])).join('')}</div>` : ''; })()}
 <p class="err" role="alert">${esc(sheet.err || '')}</p>
 <button class="btn" type="submit">${isNew ? 'Crear iniciativa' : 'Guardar'}</button>
 ${isNew ? '' : '<button class="btn danger" type="button" data-a="idel">Eliminar iniciativa</button>'}<button class="btn ghost" type="button" data-a="close">Cancelar</button></form>`;
@@ -615,6 +736,11 @@ function sheetHtml() {
     case 'states': return `<div class="sh wide" role="dialog" aria-modal="true" aria-label="Estados"><h2>Estados del proyecto</h2><p class="mut small">Ordená, renombrá, cambiá colores o sumá estados. Marcá «Terminado» en los que cierran una iniciativa.</p>${tagEditor('states', curP)}<button class="btn" data-a="close" style="margin-top:16px">Listo</button></div>`;
     case 'color': { const e = D()[s.k][s.id]; if (!e) return '';
       return `<div class="sh" role="dialog" aria-modal="true" aria-label="Color"><h2>Color de «${esc(e.n)}»</h2><div class="cgrid">${COLORS.map(c => `<button class="cs c-${c}" data-a="setcol" data-c="${c}" aria-pressed="${e.col === c}"><span>${esc(e.n)}</span><small>${COLN[c]}</small></button>`).join('')}</div><button class="btn ghost" data-a="close">Cancelar</button></div>`; }
+    case 'sprint': return sprintSheet();
+    case 'spclose': { const sp = D().sprints[s.id]; if (!sp) return ''; const is = spInits(sp), open = is.filter(i => !isDone(i)), nx = sprintsOf(sp.pr).find(x => spSt(x) === 'fut' && x.id !== sp.id);
+      return `<div class="sh" role="dialog" aria-modal="true" aria-label="Cerrar sprint"><h2>¿Cerrar ${esc(sp.n)}?</h2><p class="mut">${is.length - open.length} de ${is.length} iniciativas terminadas. Queda guardado cómo terminó para el historial.</p>
+${open.length && nx ? `<label class="ckl"><input type="checkbox" id="spmv" checked> Pasar las ${open.length} sin terminar a <b>${esc(nx.n)}</b></label>` : open.length ? `<p class="small mut">${open.length} sin terminar. Si creás el próximo sprint, podés sumarlas desde ahí.</p>` : ''}
+<button class="btn" data-a="spcloseok" data-id="${esc(sp.id)}" data-nx="${nx ? esc(nx.id) : ''}">Cerrar sprint</button><button class="btn ghost" data-a="close">Cancelar</button></div>`; }
     case 'name': return `<form id="sf" novalidate class="sh" data-f="name" role="dialog" aria-modal="true" aria-label="Tu nombre"><h2>¿Cómo te llamamos?</h2><input id="sn" class="in" type="text" maxlength="30" value="${esc(D().name || '')}" placeholder="Tu nombre o apodo" autocomplete="off" autocapitalize="words" aria-label="Tu nombre"><button class="btn" type="submit" style="margin-top:14px">Guardar</button><button class="btn ghost" type="button" data-a="close">Cancelar</button></form>`;
   }
   return '';
@@ -679,6 +805,15 @@ function submitSheet() {
     if (s.t === 'newproj') { const p = newProject(n, e); touch(); sheet = null; openProject(p.id); toast('Proyecto creado. Empezá cargando iniciativas ✍️'); return; }
     const p = P(); if (p) { upd('projects', p.id, { n: n.slice(0, 80), e: firstEmoji(e) }); touch(); }
     sheet = null; render(); return;
+  }
+  if (f === 'sprint') {
+    readSprint(); const x = s.draft; x.n = x.n.trim();
+    if (!x.n) { s.err = 'Escribí un nombre'; s.focus = '#spn'; renderSheet(); return; }
+    if (!x.s || !x.e) { s.err = 'Completá inicio y fin'; renderSheet(); return; }
+    if (x.e < x.s) [x.s, x.e] = [x.e, x.s];
+    const o = { n: x.n.slice(0, 60), s: x.s, e: x.e, off: x.off, goal: x.goal, ins: x.ins };
+    if (x.id) upd('sprints', x.id, o); else put('sprints', { pr: curP, dn: [], cl: false, ...o });
+    touch(); sheet = null; render(); toast(x.id ? 'Sprint guardado' : `«${x.n}» creado`); return;
   }
   if (f === 'name') { const n = $('#sn').value.trim().slice(0, 30); D().name = n; D().nameU = now(); touch(); sheet = null; render(); return; }
   if (f === 'init') {
@@ -840,6 +975,7 @@ function download(name, text, type) {
 function exportData() {
   const out = { exportado: new Date().toISOString(), proyectos: projects().map(p => ({
     nombre: p.n, emoji: p.e, estados: statesOf(p.id).map(s => ({ nombre: s.n, color: s.col, terminado: s.dn })), equipos: teamsOf(p.id).map(t => ({ nombre: t.n, color: t.col })),
+    sprints: sprintsOf(p.id).map(x => ({ nombre: x.n, inicio: x.s, fin: x.e, diasDisponibles: availDays(x), objetivo: x.goal, estado: SPST[spSt(x)][0], iniciativas: spInits(x).map(i => i.n) })),
     iniciativas: sortedInits(p).map(i => ({ nombre: i.n, deadline: i.dl, estado: stateOf(i.st)?.n || '', prioridad: PRIO[i.p].n, enlace: i.ln, notas: i.no,
       plazos: blocksOf(p.id).filter(b => b.in === i.id).map(b => ({ equipo: teamOf(b.tm)?.n || '', etiqueta: b.lb, desde: b.s, hasta: b.e })) }))
   })) };
@@ -870,7 +1006,7 @@ const A = {
     const p = P(); if (!p) return;
     ask(`¿Eliminar «${p.n}»?`, 'Se borran sus iniciativas, equipos, estados y plazos.', 'Sí, eliminar proyecto', () => {
       const u = now();
-      for (const k of ['states', 'teams', 'inits', 'blocks']) live(D()[k]).filter(x => x.pr === p.id).forEach(x => { x.del = true; x.u = u; });
+      for (const k of ['states', 'teams', 'inits', 'blocks', 'sprints']) live(D()[k]).filter(x => x.pr === p.id).forEach(x => { x.del = true; x.u = u; });
       p.del = true; p.u = u; touch(); curP = ''; go('projects'); toast('Proyecto eliminado');
     });
   },
@@ -926,6 +1062,19 @@ const A = {
       });
     }
   },
+  spnew() { openSheet({ t: 'sprint', draft: nextSprintDraft(curP), focus: '#spn' }); },
+  spedit(b) { const sp = D().sprints[b.dataset.id]; if (!sp) return; openSheet({ t: 'sprint', draft: { id: sp.id, n: sp.n, s: sp.s, e: sp.e, off: sp.off, goal: sp.goal, ins: [...sp.ins] } }); },
+  spdel() { const id = sheet.draft.id, sp = D().sprints[id]; if (!sp) return; ask(`¿Eliminar «${sp.n}»?`, 'Las iniciativas no se borran, solo el sprint.', 'Sí, eliminar', () => { sp.del = true; sp.u = now(); touch(); sheet = null; render(); toast('Sprint eliminado', 'Deshacer', () => { sp.del = false; sp.u = now(); touch(); render(); }); }); },
+  spclose(b) { openSheet({ t: 'spclose', id: b.dataset.id }); },
+  spcloseok(b) {
+    const sp = D().sprints[b.dataset.id]; if (!sp) return;
+    const is = spInits(sp), open = is.filter(i => !isDone(i)).map(i => i.id), nx = b.dataset.nx && D().sprints[b.dataset.nx];
+    const mv = nx && $('#spmv')?.checked;
+    upd('sprints', sp.id, { cl: true, dn: is.filter(isDone).map(i => i.id) });
+    if (mv) upd('sprints', nx.id, { ins: [...new Set([...nx.ins, ...open])] });
+    touch(); sheet = null; render(); toast(`${sp.n} cerrado${mv ? ` · ${open.length} pasaron a ${nx.n}` : ''}`);
+  },
+  spreopen(b) { upd('sprints', b.dataset.id, { cl: false, dn: [] }); touch(); render(); },
   editname() { openSheet({ t: 'name' }); },
   syncnow() { if (!S.dirty) S.dirty = true; sync().then(ok => toast(ok ? 'Sincronizado ✓' : 'No se pudo sincronizar')); },
   theme(b) { L.theme = b.dataset.v; saveL(); applyTheme(); render(); },
@@ -1061,6 +1210,9 @@ document.addEventListener('change', e => {
 });
 /* Las fechas del plazo actualizan el contador de días sin perder lo escrito */
 document.addEventListener('input', e => { if (sheet && sheet.t === 'block' && ['bs', 'be'].includes(e.target.id)) { readBlock(); const x = sheet.draft, el = $('#sf .two + .mut'); if (el) el.textContent = x.s && x.e && x.e >= x.s ? `${dn(x.e) - dn(x.s) + 1} días` : ''; } });
+
+document.addEventListener('input', e => { if (sheet && sheet.t === 'sprint' && ['sps', 'spe', 'spo'].includes(e.target.id)) { readSprint(); const el = $('#spdays'); if (el) el.innerHTML = spDaysTxt(sheet.draft); } });
+document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.sp !== undefined && sheet && sheet.t === 'sprint') { const el = $('#spcnt'); if (el) el.textContent = $$('[data-sp]').filter(c => c.checked).length; } });
 
 /* ---------- Ciclo de vida ---------- */
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.token) sync(); });
