@@ -618,3 +618,21 @@ i.tm{background:var(--mut)!important}
 .dyn .kl{display:block;margin-bottom:6px;font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
 .dyn textarea{min-height:110px;padding:12px 14px;resize:vertical;field-sizing:content;line-height:1.45}
 .dysv{margin:10px 0 0}
+
+/* Daily: barra, borrador y dailies guardadas */
+.dybar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;min-height:46px}
+.dysave{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px solid var(--line2)}
+.dysave .mut{margin-right:auto}
+.dysave .btn{margin:0}
+.dyks{display:flex;flex-direction:column;gap:14px}
+.dyk{padding:18px 22px}
+.dyk .dyt h2{font-size:1.2rem}
+.dyki{display:flex;flex-direction:column}
+.dykr{display:grid;grid-template-columns:minmax(200px,320px) 150px 1fr;gap:6px 16px;align-items:start;padding:10px 0;border-bottom:1px solid var(--line2);font-size:.92rem}
+.dykr:last-child{border-bottom:0}
+.dykr .tg{justify-self:start}
+.dykr p{margin:0;white-space:pre-wrap}
+@media(max-width:760px){.dykr{grid-template-columns:1fr auto}.dykr p{grid-column:1/-1}}
+.dykn{margin-top:12px;padding:12px 14px;border-radius:12px;background:var(--line2)}
+.dykn .kl{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
+.dykn p{margin:4px 0 0;white-space:pre-wrap}

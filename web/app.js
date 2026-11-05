@@ -521,40 +521,48 @@ function dailyInits(x) {
   const sp = sprintAt(x.pr, x.d), ids = [...new Set([...(sp ? sp.ins : []), ...Object.keys(x.items)])];
   return ids.map(id => D().inits[id]).filter(i => i && !i.del);
 }
-function newDaily(pr, d) {
-  const sp = sprintAt(pr, d), u = now(), items = {};
-  const base = sp ? spInits(sp) : initsOf(pr).filter(i => !isDone(i));
-  base.forEach(i => { items[i.id] = { c: '', st: i.st, u }; });
-  return put('dailies', { pr, d, notes: '', nU: 0, items });
+/* Borrador de la daily abierta (uno por proyecto; se guarda en este dispositivo hasta "Guardar y cerrar" o "Cancelar") */
+const dDraft = pr => (L.ddraft && L.ddraft[pr]) || null;
+function setDraft(pr, x) { L.ddraft = { ...(L.ddraft || {}) }; if (x) L.ddraft[pr] = x; else delete L.ddraft[pr]; saveL(); }
+function snapItems(pr, d, items) {
+  const sp = sprintAt(pr, d), base = sp ? spInits(sp) : initsOf(pr).filter(i => !isDone(i)), out = { ...items };
+  base.forEach(i => { if (!out[i.id]) out[i.id] = { c: '', st: i.st, st0: i.st }; });
+  return out;
 }
+const draftInits = x => [...new Set([...(sprintAt(curP, x.d)?.ins || []), ...Object.keys(x.items)])].map(id => D().inits[id]).filter(i => i && !i.del);
 function bodyDaily(p) {
+  const dr = dDraft(p.id);
+  if (dr) return `<div class="dybar"><span class="mut small">Estás completando una daily. Guardala o cancelala para ver las demás.</span></div>${dailyEditor(p, dr)}`;
   const all = dailiesOf(p.id), fm = L.dfm?.[p.id] || '', fw = L.dfw?.[p.id] || '';
   const months = [...new Set(all.map(x => x.d.slice(0, 7)))];
   const weeks = fm ? [...new Set(all.filter(x => x.d.startsWith(fm)).map(x => mondayOf(x.d)))] : [];
   const list = all.filter(x => (!fm || x.d.startsWith(fm)) && (!fw || mondayOf(x.d) === fw));
-  let sel = list.find(x => x.id === L.dsel?.[p.id]) || list[0];
-  const head = `<div class="dyh"><div><h2>Daily</h2><p class="mut small">Status de cada iniciativa del sprint en curso y avisos generales. ${RO ? 'Podés escribir y crear dailies desde este link.' : 'Quien tenga el link compartido también puede completarla.'}</p></div>
-<div class="dyf"><label class="sel">Mes <select data-dy="fm" aria-label="Filtrar por mes"><option value="">Todos</option>${months.map(m => `<option value="${m}"${m === fm ? ' selected' : ''}>${cap(MON[+m.slice(5) - 1])} ${m.slice(0, 4)}</option>`).join('')}</select></label>
+  const bar = `<div class="dybar"><div class="dyf"><label class="sel">Mes <select data-dy="fm" aria-label="Filtrar por mes"><option value="">Todos</option>${months.map(m => `<option value="${m}"${m === fm ? ' selected' : ''}>${cap(MON[+m.slice(5) - 1])} ${m.slice(0, 4)}</option>`).join('')}</select></label>
 <label class="sel">Semana <select data-dy="fw" aria-label="Filtrar por semana"${fm ? '' : ' disabled'}><option value="">Todas</option>${weeks.map(w => `<option value="${w}"${w === fw ? ' selected' : ''}>Semana del ${esc(dm(w))}</option>`).join('')}</select></label>
-<button class="btn auto dynew" data-a="dnew">+ Nueva daily</button></div></div>`;
-  if (!all.length) return head + `<div class="empty"><div class="big" aria-hidden="true">☀️</div><p><b>Todavía no hay dailies.</b></p><p class="mut">Creá la de hoy: aparecen las iniciativas del sprint en curso para anotar el status de cada una.</p></div>`;
-  const items = list.map(x => { const n = Object.values(x.items).filter(i => i.c.trim()).length, sp = sprintAt(p.id, x.d);
-    return `<button class="dyli${sel && x.id === sel.id ? ' on' : ''}" data-a="dsel" data-id="${esc(x.id)}" aria-current="${sel && x.id === sel.id}"><b>${esc(dailyTitle(x.d))}</b><small>${sp ? esc(sp.n) + ' · ' : ''}${n} ${n === 1 ? 'comentario' : 'comentarios'}${x.notes.trim() ? ' · avisos' : ''}</small></button>`; }).join('');
-  return head + `<div class="dyg"><nav class="dyl" aria-label="Dailies">${items || '<p class="mut small">No hay dailies con ese filtro.</p>'}</nav>${sel ? dailyEditor(p, sel) : ''}</div>`;
+${all.length ? `<span class="mut small">${list.length} ${list.length === 1 ? 'daily' : 'dailies'}</span>` : ''}</div><button class="btn auto dynew" data-a="dnew">+ Nueva daily</button></div>`;
+  if (!all.length) return bar + `<div class="empty"><div class="big" aria-hidden="true">☀️</div><p><b>Todavía no hay dailies.</b></p><p class="mut">Creá una: aparecen las iniciativas del sprint en curso para anotar el status de cada una.</p></div>`;
+  return bar + `<div class="dyks">${list.map(x => dailyCard(p, x)).join('') || '<p class="mut">No hay dailies con ese filtro.</p>'}</div>`;
+}
+function dailyCard(p, x) {
+  const sp = sprintAt(p.id, x.d), is = dailyInits(x), n = Object.values(x.items).filter(i => i.c.trim()).length;
+  return `<article class="card dyk"><div class="dyt"><div><h2>${esc(dailyTitle(x.d))}</h2><p class="mut small dysp">${sp ? chip(sp.n, SPST[spSt(sp)][1]) : ''}<span>${n} ${n === 1 ? 'comentario' : 'comentarios'}</span></p></div>
+<div class="dyta"><button class="mini" data-a="dedit" data-id="${esc(x.id)}">Editar</button>${RO ? '' : `<button class="icon sm dng" data-a="ddel" data-id="${esc(x.id)}" aria-label="Eliminar ${esc(dailyTitle(x.d))}">${I_TRASH}</button>`}</div></div>
+<div class="dyki">${is.map(i => { const it = x.items[i.id] || {}, s = stateOf(it.st) || stateOf(i.st); return `<div class="dykr"><b>${esc(i.n)}</b>${s ? chip(s.n, s.col) : '<span></span>'}<p class="${it.c && it.c.trim() ? '' : 'mut'}">${it.c && it.c.trim() ? esc(it.c) : 'Sin comentario'}</p></div>`; }).join('') || '<p class="mut small">Sin iniciativas.</p>'}</div>
+${x.notes.trim() ? `<div class="dykn"><span class="kl">Avisos generales</span><p>${esc(x.notes)}</p></div>` : ''}</article>`;
 }
 function dailyEditor(p, x) {
-  const sp = sprintAt(p.id, x.d), is = dailyInits(x);
-  const prev = dailiesOf(p.id).find(y => y.d < x.d);
+  const sp = sprintAt(p.id, x.d), is = draftInits(x);
+  const prev = dailiesOf(p.id).find(y => y.d < x.d && y.id !== x.id);
   const spInfo = sp ? `${chip(sp.n, SPST[spSt(sp)][1])} <span>día ${Math.min(workDays(sp.s, x.d), workDays(sp.s, sp.e))} de ${workDays(sp.s, sp.e)} hábiles</span>` : '<span>No hay sprint en esta fecha: se muestran las iniciativas abiertas.</span>';
-  return `<section class="card dye" aria-label="${esc(dailyTitle(x.d))}"><div class="dyt"><div><h2>${esc(dailyTitle(x.d))}</h2><p class="mut small dysp">${spInfo}</p></div>
-<div class="dyta"><label class="sel">Fecha <input class="in sm" type="date" value="${esc(x.d)}" data-dy="d" data-id="${esc(x.id)}" aria-label="Fecha de la daily"></label>${RO ? '' : `<button class="icon sm dng" data-a="ddel" data-id="${esc(x.id)}" aria-label="Eliminar esta daily">${I_TRASH}</button>`}</div></div>
+  return `<section class="card dye" aria-label="${esc(dailyTitle(x.d))}"><div class="dyt"><div><h2>${esc(dailyTitle(x.d))}${x.id ? '' : ' <span class="tg c-teal">Nueva</span>'}</h2><p class="mut small dysp">${spInfo}</p></div>
+<div class="dyta"><label class="sel">Fecha <input class="in sm" type="date" value="${esc(x.d)}" data-dy="d" aria-label="Fecha de la daily"></label></div></div>
 <div class="dyi">${is.map(i => { const it = x.items[i.id] || { c: '', st: i.st }, stId = stateOf(it.st) ? it.st : i.st, s = stateOf(stId), pv = prev && prev.items[i.id] && prev.items[i.id].c.trim();
     return `<div class="dyr"><div class="dyrh"><button class="itn" data-a="iopen" data-id="${esc(i.id)}"><span>${esc(i.n)}</span></button>
-<select class="tgs c-${s ? s.col : 'gray'}" data-dy="st" data-id="${esc(x.id)}" data-i="${esc(i.id)}" aria-label="Estado de ${esc(i.n)}">${s ? '' : '<option value="" selected>Sin estado</option>'}${stateOpts(p.id, stId)}</select></div>
-<textarea class="in dyc" rows="2" maxlength="1000" placeholder="Status, avances, bloqueos…" data-dy="c" data-id="${esc(x.id)}" data-i="${esc(i.id)}" aria-label="Comentario de ${esc(i.n)}">${esc(it.c)}</textarea>
+<select class="tgs c-${s ? s.col : 'gray'}" data-dy="st" data-i="${esc(i.id)}" aria-label="Estado de ${esc(i.n)}">${s ? '' : '<option value="" selected>Sin estado</option>'}${stateOpts(p.id, stId)}</select></div>
+<textarea class="in dyc" rows="2" maxlength="1000" placeholder="Status, avances, bloqueos…" data-dy="c" data-i="${esc(i.id)}" aria-label="Comentario de ${esc(i.n)}">${esc(it.c)}</textarea>
 ${pv ? `<small class="prev"><b>Daily anterior (${esc(dm(prev.d))}):</b> ${esc(pv)}</small>` : ''}</div>`; }).join('') || '<p class="mut small">No hay iniciativas para esta fecha.</p>'}</div>
-<label class="dyn"><span class="kl">Avisos generales y puntos a tener en cuenta</span><textarea class="in" rows="4" maxlength="4000" placeholder="Feriados, ausencias, dependencias, decisiones…" data-dy="notes" data-id="${esc(x.id)}">${esc(x.notes)}</textarea></label>
-<p class="mut small dysv">${RO ? 'Se guarda solo mientras escribís.' : 'Se guarda solo. Si cambiás un estado acá, también cambia en la iniciativa.'}</p></section>`;
+<label class="dyn"><span class="kl">Avisos generales y puntos a tener en cuenta</span><textarea class="in" rows="4" maxlength="4000" placeholder="Feriados, ausencias, dependencias, decisiones…" data-dy="notes">${esc(x.notes)}</textarea></label>
+<div class="dysave"><span class="mut small">${RO ? 'Los estados que cambies quedan registrados en esta daily.' : 'Al guardar, los estados que cambiaste también se actualizan en las iniciativas.'}</span><button class="btn ghost auto" data-a="dcancel">Cancelar</button><button class="btn auto" data-a="dsave">Guardar y cerrar</button></div></section>`;
 }
 
 /* --- Tablero --- */
@@ -1176,14 +1184,39 @@ const A = {
     });
   },
   dnew() {
-    const p = P(); if (!p) return;
-    const ex = dailiesOf(p.id).find(x => x.d === today());
-    if (ex) { L.dsel = { ...L.dsel, [p.id]: ex.id }; L.dfm = { ...L.dfm, [p.id]: '' }; L.dfw = { ...L.dfw, [p.id]: '' }; saveL(); paint(); toast('Ya hay una daily de hoy: la abrí'); return; }
-    const x = newDaily(p.id, today());
-    L.dsel = { ...L.dsel, [p.id]: x.id }; L.dfm = { ...L.dfm, [p.id]: '' }; L.dfw = { ...L.dfw, [p.id]: '' }; saveL();
-    dyChanged(x.id); paint(); $('.dyc')?.focus();
+    const p = P(); if (!p || dDraft(p.id)) return;
+    setDraft(p.id, { id: '', d: today(), notes: '', items: snapItems(p.id, today(), {}) });
+    paint(); $('.dyc')?.focus();
   },
-  dsel(b) { L.dsel = { ...L.dsel, [curP]: b.dataset.id }; saveL(); paint(); },
+  dedit(b) {
+    const p = P(), x = D().dailies[b.dataset.id]; if (!p || !x || dDraft(p.id)) return;
+    const items = {}; for (const [k, v] of Object.entries(x.items)) items[k] = { c: v.c, st: v.st, st0: v.st };
+    setDraft(p.id, { id: x.id, d: x.d, notes: x.notes, items: snapItems(p.id, x.d, items) });
+    paint(); window.scrollTo(0, 0);
+  },
+  dcancel() {
+    const p = P(), dr = p && dDraft(p.id); if (!dr) return;
+    const orig = dr.id && D().dailies[dr.id];
+    const dirty = !orig ? Object.values(dr.items).some(i => i.c.trim() || i.st !== i.st0) || dr.notes.trim() : dr.notes !== orig.notes || dr.d !== orig.d || Object.entries(dr.items).some(([k, i]) => (orig.items[k]?.c || '') !== i.c || i.st !== i.st0);
+    const go = () => { setDraft(p.id, null); sheet = null; renderSheet(); paint(); };
+    if (dirty) ask('¿Descartar los cambios de esta daily?', 'Lo que escribiste sin guardar se pierde.', 'Sí, descartar', go); else go();
+  },
+  dsave() {
+    const p = P(), dr = p && dDraft(p.id); if (!dr) return;
+    if (!dr.d) { toast('Elegí la fecha de la daily'); return; }
+    const u = now();
+    let x = dr.id && D().dailies[dr.id];
+    if (!x) x = put('dailies', { pr: p.id, d: dr.d, notes: dr.notes, nU: u, items: {} });
+    else { if (x.d !== dr.d) { x.d = dr.d; x.u = u; } if (x.notes !== dr.notes) { x.notes = dr.notes; x.nU = u; } }
+    for (const [k, it] of Object.entries(dr.items)) {
+      const old = x.items[k];
+      if (!old || old.c !== it.c || old.st !== it.st) x.items[k] = { c: it.c.slice(0, 1000), st: it.st, u };
+      if (!RO && it.st && it.st !== it.st0 && D().inits[k] && D().inits[k].st !== it.st) upd('inits', k, { st: it.st });
+    }
+    setDraft(p.id, null); dyChanged(x.id);
+    L.dfm = { ...L.dfm, [p.id]: '' }; L.dfw = { ...L.dfw, [p.id]: '' }; saveL();
+    render(); toast('Daily guardada');
+  },
   ddel(b) { const x = D().dailies[b.dataset.id]; if (!x) return; ask(`¿Eliminar la ${dailyTitle(x.d)}?`, 'Se borran sus comentarios y avisos.', 'Sí, eliminar', () => { x.del = true; x.u = now(); touch(); sheet = null; render(); toast('Daily eliminada', 'Deshacer', () => { x.del = false; x.u = now(); touch(); render(); }); }); },
   editname() { openSheet({ t: 'name' }); },
   syncnow() { if (!S.dirty) S.dirty = true; sync().then(ok => toast(ok ? 'Sincronizado ✓' : 'No se pudo sincronizar')); },
@@ -1312,7 +1345,7 @@ document.addEventListener('keydown', e => {
   $(`.grip[data-g="${CSS.escape(g.dataset.g)}"]`)?.focus();
 });
 function refreshTags() { if (sheet && sheet.t === 'states') renderSheet(); else render(); }
-const RO_OK = new Set(['dnew', 'dsel', 'ptab', 'flt', 'gran', 'gb', 'rmnav', 'rmtoday', 'full', 'dwn', 'dwnav', 'iopen', 'bopen', 'spedit', 'close', 'theme']);
+const RO_OK = new Set(['dnew', 'dedit', 'dsave', 'dcancel', 'yes', 'ptab', 'flt', 'gran', 'gb', 'rmnav', 'rmtoday', 'full', 'dwn', 'dwnav', 'iopen', 'bopen', 'spedit', 'close', 'theme']);
 document.addEventListener('click', e => {
   const blk = e.target.closest('.blk');
   if (blk && e.detail === 0) { openBlock(blk.dataset.b); return; }     // Enter o espacio sobre un plazo
@@ -1391,29 +1424,20 @@ async function roPush(keepalive) {
 window.addEventListener('pagehide', () => { if (RO && roDirty.size) roPush(true); });
 document.addEventListener('input', e => {
   const t = e.target, k = t.dataset && t.dataset.dy; if (!k) return;
-  const x = D().dailies[t.dataset.id]; if (!x) return;
-  if (k === 'c') { const i = t.dataset.i, it = x.items[i] || { c: '', st: D().inits[i]?.st || '' }; x.items[i] = { ...it, c: t.value.slice(0, 1000), u: now() }; dyChanged(x.id); }
-  else if (k === 'notes') { x.notes = t.value.slice(0, 4000); x.nU = now(); dyChanged(x.id); }
+  const dr = dDraft(curP); if (!dr) return;
+  if (k === 'c') { const i = t.dataset.i; dr.items[i] = { ...(dr.items[i] || { st: D().inits[i]?.st || '', st0: D().inits[i]?.st || '' }), c: t.value.slice(0, 1000) }; setDraft(curP, dr); }
+  else if (k === 'notes') { dr.notes = t.value.slice(0, 4000); setDraft(curP, dr); }
 });
 document.addEventListener('change', e => {
   const t = e.target, k = t.dataset && t.dataset.dy; if (!k) return;
   const p = P(); if (!p) return;
   if (k === 'fm') { L.dfm = { ...L.dfm, [p.id]: t.value }; L.dfw = { ...L.dfw, [p.id]: '' }; saveL(); paint(); return; }
   if (k === 'fw') { L.dfw = { ...L.dfw, [p.id]: t.value }; saveL(); paint(); return; }
-  const x = D().dailies[t.dataset.id]; if (!x) return;
+  const dr = dDraft(p.id); if (!dr) return;
   if (k === 'st') {
-    const i = t.dataset.i, it = x.items[i] || { c: '' };
-    x.items[i] = { ...it, st: t.value, u: now() };
-    if (!RO && D().inits[i]) upd('inits', i, { st: t.value });
+    const i = t.dataset.i; dr.items[i] = { ...(dr.items[i] || { c: '', st0: D().inits[i]?.st || '' }), st: t.value }; setDraft(p.id, dr);
     const s = stateOf(t.value); t.className = `tgs c-${s ? s.col : 'gray'}`;
-    dyChanged(x.id);
-  } else if (k === 'd' && t.value) {
-    x.d = t.value; x.u = now();
-    const sp = sprintAt(p.id, x.d), u = now();
-    (sp ? spInits(sp) : []).forEach(i => { if (!x.items[i.id]) x.items[i.id] = { c: '', st: i.st, u }; });
-    L.dfm = { ...L.dfm, [p.id]: '' }; L.dfw = { ...L.dfw, [p.id]: '' }; saveL();
-    dyChanged(x.id); paint();
-  }
+  } else if (k === 'd' && t.value) { dr.d = t.value; dr.items = snapItems(p.id, dr.d, dr.items); setDraft(p.id, dr); paint(); }
 });
 
 /* ---------- Ciclo de vida ---------- */
