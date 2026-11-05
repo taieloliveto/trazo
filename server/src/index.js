@@ -105,7 +105,33 @@ export default {
         const p = Object.values(d.projects).find(x => x.sh === tok && !x.del);
         if (!p) return gone();
         const pick = k => Object.fromEntries(Object.entries(d[k]).filter(([, x]) => x.pr === p.id && !x.del));
-        return j({ pr: p.id, at: Date.now(), data: { projects: { [p.id]: p }, states: pick('states'), teams: pick('teams'), inits: pick('inits'), blocks: pick('blocks'), sprints: pick('sprints') } });
+        return j({ pr: p.id, at: Date.now(), data: { projects: { [p.id]: p }, states: pick('states'), teams: pick('teams'), inits: pick('inits'), blocks: pick('blocks'), sprints: pick('sprints'), dailies: pick('dailies') } });
+      }
+
+      /* Quien mira por link solo puede crear y escribir dailies de ese proyecto (no puede borrarlas ni tocar nada más). */
+      if (/^\/public\/[A-Za-z0-9]+\/daily$/.test(url.pathname) && req.method === 'PUT') {
+        const tok = url.pathname.split('/')[2];
+        const gone = () => j({ error: 'Este link ya no está disponible' }, 404);
+        if (!shOk(tok)) return gone();
+        const body = await req.text();
+        if (body.length > 300000) return j({ error: 'Demasiados datos' }, 413);
+        const sh = await env.KV.get('share:' + tok);
+        if (!sh) return gone();
+        const key = 'user:' + JSON.parse(sh).e, raw = await env.KV.get(key);
+        if (!raw) return gone();
+        const u = JSON.parse(raw), d = sanitizeState(u.data);
+        const p = Object.values(d.projects).find(x => x.sh === tok && !x.del);
+        if (!p) return gone();
+        const inc = sanitizeState({ dailies: JSON.parse(body).dailies }).dailies, ok = {};
+        for (const x of Object.values(inc)) {
+          if (x.pr !== p.id) continue;
+          const cur = d.dailies[x.id];
+          if (cur && (cur.del || cur.pr !== p.id)) continue;
+          ok[x.id] = { ...x, del: false };
+        }
+        const merged = mergeState(d, { dailies: ok });
+        if (JSON.stringify(merged.dailies) !== JSON.stringify(d.dailies)) { u.data = merged; await env.KV.put(key, JSON.stringify(u)); }
+        return j({ dailies: Object.fromEntries(Object.entries(merged.dailies).filter(([, x]) => x.pr === p.id && !x.del)) });
       }
 
       const email = await verifyToken((req.headers.get('Authorization') || '').replace(/^Bearer /, ''), env);

@@ -307,7 +307,9 @@ await step('tablero: indicadores, gráficos, capacidad y listas', async () => {
   await page.click('[data-a=ptab][data-t=dash]');
   await page.waitForSelector('.kpis');
   assert.equal(await page.locator('.kpi').count(), 6);
-  assert.equal((await page.locator('.kpi.bad b').textContent()).trim(), '1', 'una iniciativa atrasada');
+  const dd = await data(page), td = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; });
+  const lateN = live(dd.inits).filter(i => i.dl && i.dl < td && !dd.states[i.st]?.dn).length;
+  assert.equal((await page.locator('.kpi.bad b').textContent()).trim(), String(lateN), 'atrasadas');
   assert.equal(await page.locator('.hm tbody tr').count(), 3);
   assert.equal(await page.locator('.hm thead th').count(), 8 + 2);
   await page.click('[data-a=dwn][data-v="12"]');
@@ -393,6 +395,41 @@ await step('reordenar las pestañas arrastrando', async () => {
   await page.keyboard.press('Alt+ArrowRight');
   assert.equal((await keys())[1], 'dash');
 });
+await step('daily: crear, comentar, cambiar estado, avisos y filtros', async () => {
+  await page.click('.tabs [data-t=daily]');
+  await page.click('[data-a=dnew]');
+  await page.waitForSelector('.dye');
+  assert.equal(await page.locator('.dyr').count(), 3, 'las iniciativas del sprint en curso');
+  const row = page.locator('.dyr', { hasText: 'Rediseño estructural GDA' });
+  await row.locator('textarea').fill('Dev terminó el back, falta front');
+  await row.locator('select').selectOption({ label: 'Bloqueado' });
+  await page.fill('[data-dy=notes]', 'Jueves feriado. Ana de vacaciones.');
+  await page.waitForTimeout(200);
+  let d = await data(page); let x = live(d.dailies)[0];
+  const gda = live(d.inits).find(i => i.n === 'Rediseño estructural GDA');
+  assert.equal(x.items[gda.id].c, 'Dev terminó el back, falta front');
+  assert.equal(d.states[gda.st].n, 'Bloqueado', 'el dueño cambia también la iniciativa');
+  assert.equal(x.notes, 'Jueves feriado. Ana de vacaciones.');
+  // otra daily en otra fecha y filtros
+  const dprev = new Date(Date.now() - 86400000 * 35).toISOString().slice(0, 10);
+  await page.click('[data-a=dnew]');                       // ya hay una de hoy: la abre
+  assert.equal(live((await data(page)).dailies).length, 1);
+  await page.locator('[data-dy=d]').fill(dprev);           // la de hoy pasa a otra fecha…
+  await page.locator('[data-dy=d]').dispatchEvent('change');
+  await page.click('[data-a=dnew]');                       // …y se crea la de hoy
+  assert.equal(await page.locator('.dyli').count(), 2);
+  assert.ok(await page.locator('.prev').count() >= 1, 'muestra el comentario de la daily anterior');
+  await page.selectOption('[data-dy=fm]', dprev.slice(0, 7));
+  assert.equal(await page.locator('.dyli').count(), 1);
+  const wk = await page.locator('[data-dy=fw] option').nth(1).getAttribute('value');
+  await page.selectOption('[data-dy=fw]', wk);
+  assert.equal(await page.locator('.dyli').count(), 1);
+  await page.selectOption('[data-dy=fm]', '');
+  assert.equal(await page.locator('.dyli').count(), 2);
+  await page.click('.dyli >> nth=0');
+  await shot(page, '12i-daily');
+  await page.locator('.dyr', { hasText: 'Rediseño estructural GDA' }).locator('select').selectOption({ label: 'En curso' });
+});
 await step('compartir: link de solo lectura que se actualiza', async () => {
   await page.click('[data-a=share]');
   await page.click('[data-a=shon]');
@@ -428,6 +465,25 @@ await step('compartir: link de solo lectura que se actualiza', async () => {
   await v.click('[data-a=gran][data-v=d]');      // cambiar la vista sí se puede (solo para quien mira)
   await v.waitForSelector('#rm.g-d');
   await v.click('.tabs [data-t=cur]'); await v.waitForSelector('.rep');
+  // la daily sí se puede completar desde el link
+  await v.click('.tabs [data-t=daily]');
+  await v.waitForSelector('.dye');
+  const vr = v.locator('.dyr', { hasText: 'Campaña post-mudanza' });
+  await vr.locator('textarea').fill('Escrito por alguien del equipo');
+  await vr.locator('select').selectOption({ label: 'Bloqueado' });
+  await v.waitForFunction(() => document.querySelector('.sy')?.textContent.startsWith('Actualizado'), null, { timeout: 8000 });
+  const ownerD = JSON.parse(store.get('user:taiel@test.com')).data;
+  const cpm = Object.values(ownerD.inits).find(i => i.n === 'Campaña post-mudanza');
+  const today0 = Object.values(ownerD.dailies).sort((a, b) => b.d.localeCompare(a.d))[0];
+  assert.equal(today0.items[cpm.id].c, 'Escrito por alguien del equipo');
+  assert.notEqual(ownerD.states[cpm.st].n, 'Bloqueado', 'desde el link no cambia la iniciativa');
+  assert.ok(await v.locator('[data-a=ddel]').count() === 0, 'desde el link no se puede borrar');
+  await v.screenshot({ path: join(SHOTS, '22b-compartido-daily.png'), fullPage: true });
+  // el dueño ve lo que escribió el equipo
+  await page.click('.tabs [data-t=daily]');
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.waitForFunction(() => [...document.querySelectorAll('.dyc')].some(t => t.value === 'Escrito por alguien del equipo'), null, { timeout: 8000 });
+  await page.click('.tabs [data-t=plan]');
   await v.screenshot({ path: join(SHOTS, '22-compartido-sprint.png'), fullPage: true });
   // el dueño agrega una iniciativa y el link se actualiza
   await page.click('.tabs [data-t=inits]');

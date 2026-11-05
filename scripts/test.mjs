@@ -59,6 +59,14 @@ await ok('sprints: limpia fechas, ids repetidos y combina', () => {
   const m = mergeState({ sprints: { a: { pr: 'p', n: 'SP 1', s: '2026-11-02', e: '2026-11-13', u: T } } }, { sprints: { a: { pr: 'p', n: 'SP 1', s: '2026-11-02', e: '2026-11-13', cl: true, dn: ['x'], u: T + 1 } } });
   assert.equal(m.sprints.a.cl, true); assert.deepEqual(m.sprints.a.dn, ['x']);
 });
+await ok('daily: avisos y comentarios de cada iniciativa se combinan por separado', () => {
+  const base = { pr: 'p', d: '2026-11-05', c: 1, u: T };
+  const a = { dailies: { d1: { ...base, notes: 'A', nU: T + 1, items: { i1: { c: 'uno', st: 's1', u: T + 3 }, i2: { c: 'viejo', u: T } } } } };
+  const b = { dailies: { d1: { ...base, notes: 'B', nU: T + 2, items: { i2: { c: 'nuevo', u: T + 4 }, i3: { c: 'tres', u: T } } } } };
+  const m = mergeState(a, b), x = m.dailies.d1;
+  assert.equal(x.notes, 'B'); assert.equal(x.items.i1.c, 'uno'); assert.equal(x.items.i2.c, 'nuevo'); assert.equal(x.items.i3.c, 'tres');
+  assert.deepEqual(mergeState(b, a), m);
+});
 await ok('tumbas viejas se descartan y se acota la cantidad', () => {
   const s = sanitizeState({ inits: { old: { pr: 'p', n: '', del: true, u: T - 40 * 86400000 }, nw: { pr: 'p', n: '', del: true, u: T } } }, T);
   assert.deepEqual(Object.keys(s.inits), ['nw']);
@@ -112,7 +120,16 @@ await ok('link público: solo el proyecto compartido, sin cuenta, y se puede rev
   assert.equal((await call('/public/' + tk)).status, 404);
   await call('/data', 'PUT', { data: { projects: { p1: { n: 'Q4', sh: tk, u: T + 10 } } } }, tok);
   assert.equal((await call('/public/' + tk)).status, 200);
+  // quien mira por link puede escribir dailies de ese proyecto, y nada más
+  const dy = { d9: { pr: 'p1', d: '2026-11-05', notes: 'aviso', nU: T, items: { i1: { c: 'ok', u: T } }, u: T } };
+  const w = await call('/public/' + tk + '/daily', 'PUT', { dailies: { ...dy, d8: { pr: 'p2', d: '2026-11-05', u: T } } });
+  assert.equal(w.status, 200); assert.deepEqual(Object.keys(w.body.dailies), ['d9']);
+  assert.equal((await call('/public/' + tk)).body.data.dailies.d9.items.i1.c, 'ok');
+  await call('/data', 'PUT', { data: { dailies: { d9: { pr: 'p1', d: '2026-11-05', u: T + 50, del: true } } } }, tok);
+  await call('/public/' + tk + '/daily', 'PUT', { dailies: { d9: { ...dy.d9, u: T + 99 } } });
+  assert.equal((await call('/data', 'GET', null, tok)).body.data.dailies.d9.del, true, 'no puede revivir una daily borrada');
   await call('/share/' + tk, 'DELETE', null, tok);
+  assert.equal((await call('/public/' + tk + '/daily', 'PUT', { dailies: dy })).status, 404);
   assert.equal((await call('/public/' + tk)).status, 404);
   await call('/account', 'DELETE', null, o.body.token);
 });

@@ -255,7 +255,7 @@ function paintHeader() {
   if (view === 'auth') { h.hidden = true; return; }
   h.hidden = false;
   const p = P();
-  if (RO) { h.innerHTML = `<div class="hd-in"><span class="brand"><span class="logo sm">${LOGO}</span><b>Trazo</b></span>${p ? `<span class="crumb" aria-hidden="true">/</span><span class="psw ro"><span class="pn">${nm(p)}</span></span>` : ''}<span class="grow"></span><span class="rob" title="Estás viendo un proyecto compartido. Se actualiza solo.">👁 Solo lectura</span><span class="sy ${roErr ? 'err' : 'ok'}" role="status">${roErr ? 'Sin conexión' : roAt ? 'Actualizado ' + hm(roAt) : 'Cargando…'}</span></div>`; return; }
+  if (RO) { h.innerHTML = `<div class="hd-in"><span class="brand"><span class="logo sm">${LOGO}</span><b>Trazo</b></span>${p ? `<span class="crumb" aria-hidden="true">/</span><span class="psw ro"><span class="pn">${nm(p)}</span></span>` : ''}<span class="grow"></span><span class="rob" title="Estás viendo un proyecto compartido. Se actualiza solo.">👁 Solo lectura</span><span class="sy ${roErr ? 'err' : roDirty.size || roBusy ? 'pend' : 'ok'}" role="status">${roErr ? 'Sin conexión' : roDirty.size || roBusy ? 'Guardando…' : roAt ? 'Actualizado ' + hm(roAt) : 'Cargando…'}</span></div>`; return; }
   h.innerHTML = `<div class="hd-in"><button class="brand" data-a="go" data-v="projects" aria-label="Ir a mis proyectos"><span class="logo sm">${LOGO}</span><b>Trazo</b></button>
 ${view === 'project' && p ? `<span class="crumb" aria-hidden="true">/</span><button class="psw" data-a="pswitch" aria-label="Cambiar de proyecto"><span class="pn">${nm(p)}</span>${I_DOWN}</button>` : ''}
 <span class="grow"></span>${view === 'project' && p ? `<button class="mini shb${p.sh ? ' on' : ''}" data-a="share" aria-label="Compartir proyecto">${I_SHARE}<span>${p.sh ? 'Compartido' : 'Compartir'}</span></button>` : ''}${syncBadge()}<button class="icon" data-a="go" data-v="set" aria-label="Ajustes"${view === 'set' ? ' aria-current="page"' : ''}>${I_GEAR}</button></div>`;
@@ -299,7 +299,7 @@ function projCard(p) {
 }
 
 /* ---------- Proyecto ---------- */
-const TABS = [['inits', 'Iniciativas'], ['plan', 'Roadmap'], ['sprints', 'Sprints'], ['cur', 'Sprint actual'], ['teams', 'Equipos'], ['dash', 'Tablero']];
+const TABS = [['inits', 'Iniciativas'], ['plan', 'Roadmap'], ['sprints', 'Sprints'], ['cur', 'Sprint actual'], ['daily', 'Daily'], ['teams', 'Equipos'], ['dash', 'Tablero']];
 /* Orden elegido por la persona (arrastrando las pestañas); las que falten van al final en el orden original */
 const tabsOrdered = () => { const o = (D().tabs || []).filter(k => TABS.some(t => t[0] === k)); return [...o.map(k => TABS.find(t => t[0] === k)), ...TABS.filter(t => !o.includes(t[0]))]; };
 const tabOf = p => L.tab[p.id] || 'inits';
@@ -511,6 +511,52 @@ ${noPlan.length ? `<p class="small warnt" style="margin-top:12px">${ICO_WARN} ${
 <span class="tms">${tms.map(x => `<i class="dot c-${x.col}" title="${esc(x.n)}"></i>`).join('')}${tms.length ? `<small>${tms.map(x => esc(x.n)).join(', ')}</small>` : '<small class="mut">Sin plazos</small>'}</span></div>`; }).join('')}</div>` : `<p class="mut small">Sumá iniciativas desde <button class="lnk" data-a="spedit" data-id="${esc(sp.id)}">Editar sprint</button>.</p>`}</section></div>`;
 }
 
+/* --- Daily --- */
+const DOWN = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const dailiesOf = pr => live(D().dailies).filter(x => x.pr === pr).sort((a, b) => b.d.localeCompare(a.d) || b.c - a.c);
+const sprintAt = (pr, d) => sprintsOf(pr).filter(x => x.s <= d && d <= x.e).pop() || null;
+const dailyTitle = d => { const [y, m, dd] = d.split('-').map(Number); return `Daily ${DOWN[wday(dn(d))]} ${dd} de ${MON[m - 1]}${String(y) !== today().slice(0, 4) ? ' ' + y : ''}`; };
+/* Iniciativas de una daily: las del sprint de esa fecha más las que ya tienen algo anotado */
+function dailyInits(x) {
+  const sp = sprintAt(x.pr, x.d), ids = [...new Set([...(sp ? sp.ins : []), ...Object.keys(x.items)])];
+  return ids.map(id => D().inits[id]).filter(i => i && !i.del);
+}
+function newDaily(pr, d) {
+  const sp = sprintAt(pr, d), u = now(), items = {};
+  const base = sp ? spInits(sp) : initsOf(pr).filter(i => !isDone(i));
+  base.forEach(i => { items[i.id] = { c: '', st: i.st, u }; });
+  return put('dailies', { pr, d, notes: '', nU: 0, items });
+}
+function bodyDaily(p) {
+  const all = dailiesOf(p.id), fm = L.dfm?.[p.id] || '', fw = L.dfw?.[p.id] || '';
+  const months = [...new Set(all.map(x => x.d.slice(0, 7)))];
+  const weeks = fm ? [...new Set(all.filter(x => x.d.startsWith(fm)).map(x => mondayOf(x.d)))] : [];
+  const list = all.filter(x => (!fm || x.d.startsWith(fm)) && (!fw || mondayOf(x.d) === fw));
+  let sel = list.find(x => x.id === L.dsel?.[p.id]) || list[0];
+  const head = `<div class="dyh"><div><h2>Daily</h2><p class="mut small">Status de cada iniciativa del sprint en curso y avisos generales. ${RO ? 'Podés escribir y crear dailies desde este link.' : 'Quien tenga el link compartido también puede completarla.'}</p></div>
+<div class="dyf"><label class="sel">Mes <select data-dy="fm" aria-label="Filtrar por mes"><option value="">Todos</option>${months.map(m => `<option value="${m}"${m === fm ? ' selected' : ''}>${cap(MON[+m.slice(5) - 1])} ${m.slice(0, 4)}</option>`).join('')}</select></label>
+<label class="sel">Semana <select data-dy="fw" aria-label="Filtrar por semana"${fm ? '' : ' disabled'}><option value="">Todas</option>${weeks.map(w => `<option value="${w}"${w === fw ? ' selected' : ''}>Semana del ${esc(dm(w))}</option>`).join('')}</select></label>
+<button class="btn auto dynew" data-a="dnew">+ Nueva daily</button></div></div>`;
+  if (!all.length) return head + `<div class="empty"><div class="big" aria-hidden="true">☀️</div><p><b>Todavía no hay dailies.</b></p><p class="mut">Creá la de hoy: aparecen las iniciativas del sprint en curso para anotar el status de cada una.</p></div>`;
+  const items = list.map(x => { const n = Object.values(x.items).filter(i => i.c.trim()).length, sp = sprintAt(p.id, x.d);
+    return `<button class="dyli${sel && x.id === sel.id ? ' on' : ''}" data-a="dsel" data-id="${esc(x.id)}" aria-current="${sel && x.id === sel.id}"><b>${esc(dailyTitle(x.d))}</b><small>${sp ? esc(sp.n) + ' · ' : ''}${n} ${n === 1 ? 'comentario' : 'comentarios'}${x.notes.trim() ? ' · avisos' : ''}</small></button>`; }).join('');
+  return head + `<div class="dyg"><nav class="dyl" aria-label="Dailies">${items || '<p class="mut small">No hay dailies con ese filtro.</p>'}</nav>${sel ? dailyEditor(p, sel) : ''}</div>`;
+}
+function dailyEditor(p, x) {
+  const sp = sprintAt(p.id, x.d), is = dailyInits(x);
+  const prev = dailiesOf(p.id).find(y => y.d < x.d);
+  const spInfo = sp ? `${chip(sp.n, SPST[spSt(sp)][1])} <span>día ${Math.min(workDays(sp.s, x.d), workDays(sp.s, sp.e))} de ${workDays(sp.s, sp.e)} hábiles</span>` : '<span>No hay sprint en esta fecha: se muestran las iniciativas abiertas.</span>';
+  return `<section class="card dye" aria-label="${esc(dailyTitle(x.d))}"><div class="dyt"><div><h2>${esc(dailyTitle(x.d))}</h2><p class="mut small dysp">${spInfo}</p></div>
+<div class="dyta"><label class="sel">Fecha <input class="in sm" type="date" value="${esc(x.d)}" data-dy="d" data-id="${esc(x.id)}" aria-label="Fecha de la daily"></label>${RO ? '' : `<button class="icon sm dng" data-a="ddel" data-id="${esc(x.id)}" aria-label="Eliminar esta daily">${I_TRASH}</button>`}</div></div>
+<div class="dyi">${is.map(i => { const it = x.items[i.id] || { c: '', st: i.st }, stId = stateOf(it.st) ? it.st : i.st, s = stateOf(stId), pv = prev && prev.items[i.id] && prev.items[i.id].c.trim();
+    return `<div class="dyr"><div class="dyrh"><button class="itn" data-a="iopen" data-id="${esc(i.id)}"><span>${esc(i.n)}</span></button>
+<select class="tgs c-${s ? s.col : 'gray'}" data-dy="st" data-id="${esc(x.id)}" data-i="${esc(i.id)}" aria-label="Estado de ${esc(i.n)}">${s ? '' : '<option value="" selected>Sin estado</option>'}${stateOpts(p.id, stId)}</select></div>
+<textarea class="in dyc" rows="2" maxlength="1000" placeholder="Status, avances, bloqueos…" data-dy="c" data-id="${esc(x.id)}" data-i="${esc(i.id)}" aria-label="Comentario de ${esc(i.n)}">${esc(it.c)}</textarea>
+${pv ? `<small class="prev"><b>Daily anterior (${esc(dm(prev.d))}):</b> ${esc(pv)}</small>` : ''}</div>`; }).join('') || '<p class="mut small">No hay iniciativas para esta fecha.</p>'}</div>
+<label class="dyn"><span class="kl">Avisos generales y puntos a tener en cuenta</span><textarea class="in" rows="4" maxlength="4000" placeholder="Feriados, ausencias, dependencias, decisiones…" data-dy="notes" data-id="${esc(x.id)}">${esc(x.notes)}</textarea></label>
+<p class="mut small dysv">${RO ? 'Se guarda solo mientras escribís.' : 'Se guarda solo. Si cambiás un estado acá, también cambia en la iniciativa.'}</p></section>`;
+}
+
 /* --- Tablero --- */
 const capOf = t => t.cap || 2;
 const WEEKS = [4, 8, 12];
@@ -598,7 +644,7 @@ function vSet() {
 function bodyHtml() {
   const p = P(); if (view !== 'project' || !p) return '';
   const t = tabOf(p);
-  return t === 'inits' ? bodyInits(p) : t === 'plan' ? bodyPlan(p) : t === 'dash' ? bodyDash(p) : t === 'sprints' ? bodySprints(p) : t === 'cur' ? bodyCur(p) : bodyTeams(p);
+  return t === 'inits' ? bodyInits(p) : t === 'plan' ? bodyPlan(p) : t === 'dash' ? bodyDash(p) : t === 'sprints' ? bodySprints(p) : t === 'cur' ? bodyCur(p) : t === 'daily' ? bodyDaily(p) : bodyTeams(p);
 }
 let scrollKeep = null;
 function paint() {
@@ -1009,6 +1055,7 @@ function exportData() {
   const out = { exportado: new Date().toISOString(), proyectos: projects().map(p => ({
     nombre: p.n, emoji: p.e, estados: statesOf(p.id).map(s => ({ nombre: s.n, color: s.col, terminado: s.dn })), equipos: teamsOf(p.id).map(t => ({ nombre: t.n, color: t.col })),
     sprints: sprintsOf(p.id).map(x => ({ nombre: x.n, inicio: x.s, fin: x.e, diasDisponibles: availDays(x), objetivo: x.goal, estado: SPST[spSt(x)][0], iniciativas: spInits(x).map(i => i.n) })),
+    dailies: dailiesOf(p.id).map(x => ({ fecha: x.d, avisos: x.notes, iniciativas: Object.entries(x.items).map(([id, it]) => ({ iniciativa: D().inits[id]?.n || '', estado: stateOf(it.st)?.n || '', comentario: it.c })) })),
     iniciativas: sortedInits(p).map(i => ({ nombre: i.n, deadline: i.dl, estado: stateOf(i.st)?.n || '', prioridad: PRIO[i.p].n, enlace: i.ln, notas: i.no,
       plazos: blocksOf(p.id).filter(b => b.in === i.id).map(b => ({ equipo: teamOf(b.tm)?.n || '', etiqueta: b.lb, desde: b.s, hasta: b.e })) }))
   })) };
@@ -1040,7 +1087,7 @@ const A = {
     const p = P(); if (!p) return;
     ask(`¿Eliminar «${p.n}»?`, 'Se borran sus iniciativas, equipos, estados y plazos.', 'Sí, eliminar proyecto', () => {
       const u = now();
-      for (const k of ['states', 'teams', 'inits', 'blocks', 'sprints']) live(D()[k]).filter(x => x.pr === p.id).forEach(x => { x.del = true; x.u = u; });
+      for (const k of ['states', 'teams', 'inits', 'blocks', 'sprints', 'dailies']) live(D()[k]).filter(x => x.pr === p.id).forEach(x => { x.del = true; x.u = u; });
       p.del = true; p.u = u; touch(); curP = ''; go('projects'); toast('Proyecto eliminado');
     });
   },
@@ -1128,6 +1175,16 @@ const A = {
       sheet = { t: 'share', id: p.id }; renderSheet(); paintHeader(); toast('El link ya no funciona');
     });
   },
+  dnew() {
+    const p = P(); if (!p) return;
+    const ex = dailiesOf(p.id).find(x => x.d === today());
+    if (ex) { L.dsel = { ...L.dsel, [p.id]: ex.id }; L.dfm = { ...L.dfm, [p.id]: '' }; L.dfw = { ...L.dfw, [p.id]: '' }; saveL(); paint(); toast('Ya hay una daily de hoy: la abrí'); return; }
+    const x = newDaily(p.id, today());
+    L.dsel = { ...L.dsel, [p.id]: x.id }; L.dfm = { ...L.dfm, [p.id]: '' }; L.dfw = { ...L.dfw, [p.id]: '' }; saveL();
+    dyChanged(x.id); paint(); $('.dyc')?.focus();
+  },
+  dsel(b) { L.dsel = { ...L.dsel, [curP]: b.dataset.id }; saveL(); paint(); },
+  ddel(b) { const x = D().dailies[b.dataset.id]; if (!x) return; ask(`¿Eliminar la ${dailyTitle(x.d)}?`, 'Se borran sus comentarios y avisos.', 'Sí, eliminar', () => { x.del = true; x.u = now(); touch(); sheet = null; render(); toast('Daily eliminada', 'Deshacer', () => { x.del = false; x.u = now(); touch(); render(); }); }); },
   editname() { openSheet({ t: 'name' }); },
   syncnow() { if (!S.dirty) S.dirty = true; sync().then(ok => toast(ok ? 'Sincronizado ✓' : 'No se pudo sincronizar')); },
   theme(b) { L.theme = b.dataset.v; saveL(); applyTheme(); render(); },
@@ -1255,7 +1312,7 @@ document.addEventListener('keydown', e => {
   $(`.grip[data-g="${CSS.escape(g.dataset.g)}"]`)?.focus();
 });
 function refreshTags() { if (sheet && sheet.t === 'states') renderSheet(); else render(); }
-const RO_OK = new Set(['ptab', 'flt', 'gran', 'gb', 'rmnav', 'rmtoday', 'full', 'dwn', 'dwnav', 'iopen', 'bopen', 'spedit', 'close', 'theme']);
+const RO_OK = new Set(['dnew', 'dsel', 'ptab', 'flt', 'gran', 'gb', 'rmnav', 'rmtoday', 'full', 'dwn', 'dwnav', 'iopen', 'bopen', 'spedit', 'close', 'theme']);
 document.addEventListener('click', e => {
   const blk = e.target.closest('.blk');
   if (blk && e.detail === 0) { openBlock(blk.dataset.b); return; }     // Enter o espacio sobre un plazo
@@ -1315,6 +1372,50 @@ document.addEventListener('input', e => { if (sheet && sheet.t === 'block' && ['
 document.addEventListener('input', e => { if (sheet && sheet.t === 'sprint' && ['sps', 'spe', 'spo'].includes(e.target.id)) { readSprint(); const el = $('#spdays'); if (el) el.innerHTML = spDaysTxt(sheet.draft); } });
 document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.sp !== undefined && sheet && sheet.t === 'sprint') { const el = $('#spcnt'); if (el) el.textContent = $$('[data-sp]').filter(c => c.checked).length; } });
 
+/* Daily: se guarda mientras se escribe. El dueño sincroniza como siempre; quien mira por link lo manda al servidor. */
+let roDirty = new Set(), roT = null, roBusy = false;
+function dyChanged(id) { if (RO) { roDirty.add(id); clearTimeout(roT); roT = setTimeout(roPush, 1200); paintHeader(); } else touch(); }
+async function roPush(keepalive) {
+  if (!RO || !roDirty.size || roBusy) return;
+  const ids = [...roDirty]; roDirty.clear(); roBusy = true;
+  const dailies = Object.fromEntries(ids.map(id => [id, D().dailies[id]]).filter(x => x[1]));
+  try {
+    const r = await fetch(apiBase() + '/public/' + RO_TOKEN + '/daily', { method: 'PUT', keepalive: !!keepalive, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dailies }) });
+    const b = await r.json().catch(() => null);
+    if (r.status === 404) { roGone = (b && b.error) || 'Este link ya no está disponible'; renderGone(); return; }
+    if (!r.ok) throw new Error();
+    S.data = mergeState(S.data, { dailies: b.dailies }); roErr = ''; roAt = Date.now();
+  } catch (_) { ids.forEach(i => roDirty.add(i)); roErr = 'net'; clearTimeout(roT); roT = setTimeout(roPush, 5000); }
+  finally { roBusy = false; paintHeader(); if (roDirty.size && !roErr) { clearTimeout(roT); roT = setTimeout(roPush, 600); } }
+}
+window.addEventListener('pagehide', () => { if (RO && roDirty.size) roPush(true); });
+document.addEventListener('input', e => {
+  const t = e.target, k = t.dataset && t.dataset.dy; if (!k) return;
+  const x = D().dailies[t.dataset.id]; if (!x) return;
+  if (k === 'c') { const i = t.dataset.i, it = x.items[i] || { c: '', st: D().inits[i]?.st || '' }; x.items[i] = { ...it, c: t.value.slice(0, 1000), u: now() }; dyChanged(x.id); }
+  else if (k === 'notes') { x.notes = t.value.slice(0, 4000); x.nU = now(); dyChanged(x.id); }
+});
+document.addEventListener('change', e => {
+  const t = e.target, k = t.dataset && t.dataset.dy; if (!k) return;
+  const p = P(); if (!p) return;
+  if (k === 'fm') { L.dfm = { ...L.dfm, [p.id]: t.value }; L.dfw = { ...L.dfw, [p.id]: '' }; saveL(); paint(); return; }
+  if (k === 'fw') { L.dfw = { ...L.dfw, [p.id]: t.value }; saveL(); paint(); return; }
+  const x = D().dailies[t.dataset.id]; if (!x) return;
+  if (k === 'st') {
+    const i = t.dataset.i, it = x.items[i] || { c: '' };
+    x.items[i] = { ...it, st: t.value, u: now() };
+    if (!RO && D().inits[i]) upd('inits', i, { st: t.value });
+    const s = stateOf(t.value); t.className = `tgs c-${s ? s.col : 'gray'}`;
+    dyChanged(x.id);
+  } else if (k === 'd' && t.value) {
+    x.d = t.value; x.u = now();
+    const sp = sprintAt(p.id, x.d), u = now();
+    (sp ? spInits(sp) : []).forEach(i => { if (!x.items[i.id]) x.items[i.id] = { c: '', st: i.st, u }; });
+    L.dfm = { ...L.dfm, [p.id]: '' }; L.dfw = { ...L.dfw, [p.id]: '' }; saveL();
+    dyChanged(x.id); paint();
+  }
+});
+
 /* ---------- Ciclo de vida ---------- */
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.token) sync(); });
 window.addEventListener('online', () => { if (S.token) sync(); });
@@ -1329,10 +1430,11 @@ async function roFetch() {
     const r = await fetch(apiBase() + '/public/' + RO_TOKEN, { cache: 'no-store' });
     const b = await r.json().catch(() => null);
     if (!r.ok) { roGone = (b && b.error) || 'Este link ya no está disponible'; roErr = ''; renderGone(); return; }
-    S.data = sanitizeState(b.data); curP = b.pr; roAt = Date.now(); roErr = ''; roGone = '';
+    const mine = Object.fromEntries([...roDirty].map(id => [id, S.data.dailies[id]]).filter(x => x[1]));
+    S.data = mergeState(sanitizeState(b.data), { dailies: mine }); curP = b.pr; roAt = Date.now(); roErr = ''; roGone = '';
     const p = P(); if (p) Object.assign(p, roKeep);
     view = 'project';
-    if (sheet || dragging) paintHeader(); else render();
+    if (sheet || dragging || document.activeElement?.matches('input,select,textarea')) paintHeader(); else render();
   } catch (_) { roErr = 'net'; paintHeader(); }
 }
 function renderGone() {
