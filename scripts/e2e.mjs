@@ -266,6 +266,10 @@ await step('ordenar iniciativas arrastrando (roadmap) y se refleja en el listado
   assert.equal(after[3], before[0]);
   await page.click('[data-a=ptab][data-t=inits]');
   assert.deepEqual(await page.locator('.itn span').allTextContents(), after);
+  // la columna muestra el equipo que tiene la iniciativa (hoy, o el próximo)
+  assert.ok((await page.locator('.itr', { hasText: 'Campaña post-mudanza' }).locator('.tms').textContent()).includes('CUX / Data'));
+  assert.equal(await page.locator('.ith').textContent().then(t => t.includes('Equipo actual')), true);
+  await page.screenshot({ path: join(SHOTS, '05b-equipo-actual.png') });
   await page.click('[data-a=ptab][data-t=plan]');
   await shot(page, '08b-roadmap-orden');
 });

@@ -323,20 +323,31 @@ function shellInits(p) {
 <span class="grow"></span><label class="sel">Ordenar por <select data-ch="sort" aria-label="Ordenar por">${Object.entries(SORTS).map(([k, n]) => `<option value="${k}"${(L.sort[p.id] || 'manual') === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
 <button class="mini" data-a="states">Editar estados</button></div>`;
 }
+/* Equipo que tiene la iniciativa hoy según el roadmap; si hoy no tiene a nadie, el próximo (o el último que la tuvo). */
+function curTeamCell(i, bl, t) {
+  const mine = bl.filter(b => b.in === i.id);
+  if (!mine.length) return `<button class="lnk" data-a="iplan" data-id="${esc(i.id)}">Planificar</button>`;
+  const lab = (b, cls) => { const x = teamOf(b.tm); return `<span class="ctm ${cls}" title="${esc((x ? x.n : 'Sin equipo') + (b.lb ? ' · ' + b.lb : '') + ': ' + dm(b.s) + ' → ' + dm(b.e))}"><i class="dot c-${x ? x.col : 'gray'}"></i><b>${esc(x ? x.n : 'Sin equipo')}</b>${b.lb ? `<em>${esc(b.lb)}</em>` : ''}</span>`; };
+  const now_ = mine.filter(b => b.s <= t && b.e >= t).sort((a, b) => a.e.localeCompare(b.e));
+  if (now_.length) return `<span class="ctms">${now_.map(b => lab(b, 'on')).join('')}<small>hasta ${esc(dm(now_[0].e))}</small></span>`;
+  const nx = mine.filter(b => b.s > t).sort((a, b) => a.s.localeCompare(b.s))[0];
+  if (nx) return `<span class="ctms"><small class="pre">Próximo</small>${lab(nx, 'nx')}<small>desde ${esc(dm(nx.s))}</small></span>`;
+  const ls = mine.sort((a, b) => b.e.localeCompare(a.e))[0];
+  return `<span class="ctms"><small class="pre">Último</small>${lab(ls, 'nx')}<small>terminó ${esc(dm(ls.e))}</small></span>`;
+}
 function bodyInits(p) {
   const f = L.flt[p.id] || '', rows = sortedInits(p).filter(i => !f || i.st === f);
   if (!initsOf(p.id).length) return `<div class="empty"><div class="big" aria-hidden="true">📝</div><p><b>Todavía no hay iniciativas.</b></p><p class="mut">Escribí la primera arriba: nombre, deadline, estado y prioridad.</p></div>`;
   if (!rows.length) return `<div class="empty"><p class="mut">No hay iniciativas con ese estado.</p></div>`;
   const bl = blocksOf(p.id), t = today();
-  return `<div class="itbl" role="table" aria-label="Iniciativas"><div class="ith" role="row"><span role="columnheader">Iniciativa</span><span role="columnheader">Deadline</span><span role="columnheader">Estado</span><span role="columnheader">Prioridad</span><span role="columnheader">Equipos</span><span></span></div>
+  return `<div class="itbl" role="table" aria-label="Iniciativas"><div class="ith" role="row"><span role="columnheader">Iniciativa</span><span role="columnheader">Deadline</span><span role="columnheader">Estado</span><span role="columnheader">Prioridad</span><span role="columnheader">Equipo actual</span><span></span></div>
 ${rows.map(i => {
     const s = stateOf(i.st), late = i.dl && i.dl < t && !isDone(i), soon = i.dl && !late && dn(i.dl) - dn(t) <= 7 && !isDone(i);
-    const tms = [...new Set(bl.filter(b => b.in === i.id).map(b => b.tm))].map(teamOf).filter(Boolean);
     return `<div class="itr${isDone(i) ? ' done' : ''}" role="row" data-rid="${esc(i.id)}"><div class="itc" role="cell">${grip(i)}<button class="itn" data-a="iopen" data-id="${esc(i.id)}"><span>${esc(i.n)}</span>${i.ln ? `<i class="lk" title="Tiene enlace">${I_LINK}</i>` : ''}${i.no ? '<i class="nt" title="Tiene notas">¶</i>' : ''}</button></div>
 <span role="cell" class="cdl"><input class="in sm dl${late ? ' late' : soon ? ' soon' : ''}" type="date" value="${esc(i.dl)}" data-ch="dl" data-id="${esc(i.id)}" aria-label="Deadline de ${esc(i.n)}"></span>
 <span role="cell"><select class="tgs c-${s ? s.col : 'gray'}" data-ch="st" data-id="${esc(i.id)}" aria-label="Estado de ${esc(i.n)}">${s ? '' : '<option value="" selected>Sin estado</option>'}${stateOpts(p.id, i.st, true)}</select></span>
 <span role="cell"><select class="tgs p c-${PRIO[i.p].c}" data-ch="p" data-id="${esc(i.id)}" aria-label="Prioridad de ${esc(i.n)}">${prioOpts(i.p)}</select></span>
-<span role="cell" class="tms">${tms.length ? tms.map(x => `<i class="dot c-${x.col}" title="${esc(x.n)}"></i>`).join('') + `<small>${tms.length === 1 ? esc(tms[0].n) : tms.length + ' equipos'}</small>` : `<button class="lnk" data-a="iplan" data-id="${esc(i.id)}">Planificar</button>`}</span>
+<span role="cell" class="tms">${curTeamCell(i, bl, t)}</span>
 <span role="cell" class="ce"><button class="icon sm" data-a="iopen" data-id="${esc(i.id)}" aria-label="Editar ${esc(i.n)}">${I_DOTS}</button></span></div>`;
   }).join('')}</div>`;
 }
