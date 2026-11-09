@@ -254,9 +254,9 @@ await step('roadmap: más plazos desde la ficha de la iniciativa', async () => {
   await shot(page, '08-roadmap-semana');
 });
 await step('ordenar iniciativas arrastrando (roadmap) y se refleja en el listado', async () => {
-  const names = async () => page.locator('.rr .rn').allTextContents();
+  const names = async () => page.locator('.rr[data-rid] .rn').allTextContents();
   const before = await names();
-  const src = page.locator('.rr').nth(0).locator('.grip'), last = page.locator('.rr').nth(3);
+  const src = page.locator('.rr[data-rid]').nth(0).locator('.grip'), last = page.locator('.rr[data-rid]').nth(3);
   const a = await src.boundingBox(), b = await last.boundingBox();
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down();
   await page.mouse.move(a.x + a.width / 2, a.y + 30, { steps: 4 });
@@ -272,6 +272,39 @@ await step('ordenar iniciativas arrastrando (roadmap) y se refleja en el listado
   await page.screenshot({ path: join(SHOTS, '05b-equipo-actual.png') });
   await page.click('[data-a=ptab][data-t=plan]');
   await shot(page, '08b-roadmap-orden');
+});
+await step('avisos «A tener en cuenta» arriba del roadmap', async () => {
+  assert.ok(await page.locator('.rra .rn:has-text("A tener en cuenta")').count());
+  const rows = await page.locator('.rb > .rr').evaluateAll(r => r.map(x => x.dataset.k));
+  assert.equal(rows[0], 'n', 'es la primera fila');
+  const b = await page.locator('.rra .rt').boundingBox(), y = b.y + b.height / 2, x0 = b.x + 30 * 20 + 5;
+  await page.mouse.move(x0, y); await page.mouse.down();
+  await page.mouse.move(x0 + 40, y, { steps: 3 }); await page.mouse.move(x0 + 4 * 20, y, { steps: 3 });
+  await page.mouse.up();
+  await page.waitForSelector('.sh[data-f=alert]');
+  assert.equal(await page.locator('.alv').count(), 3);
+  await page.fill('#alt', 'Vacaciones IT');
+  await page.click('.alv.al-red');
+  await page.click('#sf button[type=submit]');
+  await page.waitForSelector('.blk.alr.al-red');
+  let a = live((await data(page)).alerts)[0];
+  assert.equal(a.t, 'Vacaciones IT'); assert.equal(a.lv, 'red');
+  assert.equal((Date.parse(a.e) - Date.parse(a.s)) / 86400000, 4);
+  // se mueve arrastrando y se edita al tocarlo
+  const bb = await page.locator('.blk.alr').boundingBox(), s0 = a.s;
+  await page.mouse.move(bb.x + bb.width / 2, bb.y + 10); await page.mouse.down();
+  await page.mouse.move(bb.x + bb.width / 2 + 30, bb.y + 10, { steps: 3 }); await page.mouse.move(bb.x + bb.width / 2 + 2 * 20, bb.y + 10, { steps: 3 });
+  await page.mouse.up();
+  assert.equal((Date.parse(live((await data(page)).alerts)[0].s) - Date.parse(s0)) / 86400000, 2);
+  await page.click('.blk.alr');
+  await page.waitForSelector('.sh[data-f=alert]');
+  await page.click('.alv.al-gray'); await page.fill('#alt', 'Vacaciones IT (Juan)');
+  await page.click('#sf button[type=submit]');
+  await page.waitForSelector('.blk.alr.al-gray');
+  await page.click('[data-a=alnew]'); await page.fill('#alt', 'Feriado'); await page.click('#sf button[type=submit]');
+  await page.waitForFunction(() => document.querySelectorAll('.blk.alr').length === 2);
+  assert.equal(live((await data(page)).alerts).find(x => x.t === 'Feriado').lv, 'yellow', 'amarillo por defecto');
+  await shot(page, '08c-roadmap-avisos');
 });
 await step('granularidad: día, quincena y mes', async () => {
   for (const [g, name] of [['d', '09-roadmap-dia'], ['q', '10-roadmap-quincena'], ['m', '11-roadmap-mes']]) {
@@ -298,7 +331,7 @@ await step('navegar meses y cantidad visible', async () => {
 await step('agrupar por equipo', async () => {
   await page.click('[data-a=gb][data-v=t]');
   await page.waitForSelector('.rlb.tm');
-  assert.equal(await page.locator('.rr').count(), 3);
+  assert.equal(await page.locator('.rr[data-k=t]').count(), 3);
   assert.ok(await page.locator('.blk:has-text("Rediseño estructural GDA")').count() >= 1);
   await shot(page, '12-roadmap-por-equipo');
   await page.click('[data-a=gb][data-v=i]');
@@ -327,8 +360,7 @@ await step('tablero: indicadores, gráficos, capacidad y listas', async () => {
 await step('sprints: crear con fechas, días disponibles, objetivo e iniciativas', async () => {
   await page.click('[data-a=ptab][data-t=sprints]');
   await page.click('[data-a=spnew]');
-  const mon = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().slice(0, 10); });
-  const fri2 = new Date(Date.parse(mon) + 11 * 86400000).toISOString().slice(0, 10);
+  const [mon, fri2] = await page.evaluate(() => { const f = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; const d = new Date(); d.setHours(12); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); const e = new Date(d); e.setDate(e.getDate() + 11); return [f(d), f(e)]; });
   await page.fill('#spn', 'SP 16');
   await page.fill('#sps', mon); await page.fill('#spe', fri2);
   await page.fill('#spo', '1');
@@ -581,10 +613,10 @@ await step('se guarda en el servidor y aparece en otro dispositivo', async () =>
   await m.click('[data-a=ptab][data-t=plan]');
   await m.waitForSelector('#rm');
   await m.waitForTimeout(300);
-  assert.equal(await m.locator('.blk').count(), 3);
+  assert.equal(await m.locator('.blk:not(.alr)').count(), 3);
   await m.screenshot({ path: join(SHOTS, '13-movil-roadmap.png') });
   // tocar una fila vacía abre un plazo nuevo
-  const b = await m.locator('.rr').nth(1).locator('.rt').boundingBox();
+  const b = await m.locator('.rr[data-rid]').nth(0).locator('.rt').boundingBox();
   await m.touchscreen.tap(b.x + 100, b.y + b.height / 2);
   await m.waitForSelector('.sh[data-f=block]');
   await m.waitForTimeout(500);
@@ -630,6 +662,7 @@ await step('pantalla vacía ofrece el ejemplo', async () => {
   await q.screenshot({ path: join(SHOTS, '18-ejemplo-roadmap.png') });
   assert.ok(await q.locator('.blk').count() >= 10);
   assert.ok(await q.locator('.dlm').count() >= 3, 'marcas de deadline');
+  assert.ok(await q.locator('.blk.alr').count() >= 2, 'el ejemplo trae avisos');
   await q.click('[data-a=ptab][data-t=inits]');
   await q.screenshot({ path: join(SHOTS, '19-ejemplo-iniciativas.png') });
   await q.click('[data-a=ptab][data-t=cur]');

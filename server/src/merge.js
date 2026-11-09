@@ -18,6 +18,9 @@
      sprints:  { id: { id, pr, n, s, e, off, goal, ins, dn, cl, c, u, del } }
                   sprint: del día `s` al día `e` · off días no disponibles (feriados) · goal objetivo
                   ins iniciativas incluidas · cl cerrado · dn iniciativas terminadas al cerrarlo
+     alerts:   { id: { id, pr, s, e, t, lv, c, u, del } }
+                  aviso "a tener en cuenta" del roadmap (vacaciones, feriados, congelamientos)
+                  t texto · lv nivel (red | yellow | gray)
      dailies:  { id: { id, pr, d, notes, nU, items: { idIniciativa: { c, st, u } }, c, u, del } }
                   daily del día `d` · notes avisos generales · items comentario y estado de cada iniciativa
                   (se combina por partes: avisos e iniciativas por separado, así varias personas pueden escribir a la vez)
@@ -26,7 +29,7 @@
    } */
 
 const DAY = 86400000, TOMB_TTL = 30 * DAY;
-const LIM = { projects: 200, states: 2000, teams: 2000, inits: 5000, blocks: 12000, sprints: 3000, dailies: 5000 };
+const LIM = { projects: 200, states: 2000, teams: 2000, inits: 5000, blocks: 12000, sprints: 3000, dailies: 5000, alerts: 3000 };
 const idOk = s => typeof s === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(s);
 const str = (s, n) => typeof s === 'string' ? s.slice(0, n) : '';
 const num = x => Number.isFinite(+x) ? +x : 0;
@@ -53,7 +56,7 @@ function firstEmoji(s) {
   return isEmoji(g) ? g : '';
 }
 
-function emptyState() { return { name: '', nameU: 0, projects: {}, states: {}, teams: {}, inits: {}, blocks: {}, sprints: {}, dailies: {}, last: '', lastU: 0, tabs: [], tabsU: 0 }; }
+function emptyState() { return { name: '', nameU: 0, projects: {}, states: {}, teams: {}, inits: {}, blocks: {}, sprints: {}, dailies: {}, alerts: {}, last: '', lastU: 0, tabs: [], tabsU: 0 }; }
 
 const isObj = x => x && typeof x === 'object';
 const col = c => COLORS.includes(c) ? c : 'gray';
@@ -97,6 +100,16 @@ function fixSprint(r, id) {
     goal: del ? '' : str(r.goal, 1000), ins: del ? [] : idList(r.ins, 300), dn: del ? [] : idList(r.dn, 300), cl: !!r.cl, c: num(r.c), u: num(r.u), del };
 }
 
+function fixAlert(r, id) {
+  if (!isObj(r) || !idOk(r.pr)) return null;
+  const del = !!r.del;
+  let s = ymdOk(r.s) ? r.s : '', e = ymdOk(r.e) ? r.e : '';
+  if (!s || !e) { if (!del) return null; s = s || '2000-01-01'; e = e || s; }
+  if (e < s) [s, e] = [e, s];
+  const t = str(r.t, 120).trim();
+  if (!t && !del) return null;
+  return { id, pr: r.pr, s, e, t, lv: ['red', 'yellow', 'gray'].includes(r.lv) ? r.lv : 'gray', c: num(r.c), u: num(r.u), del };
+}
 function fixDaily(r, id) {
   if (!isObj(r) || !idOk(r.pr)) return null;
   const del = !!r.del, d = ymdOk(r.d) ? r.d : (del ? '2000-01-01' : '');
@@ -151,6 +164,7 @@ function sanitizeState(d, now) {
   out.blocks = pruneMap(d.blocks, LIM.blocks, now, fixBlock);
   out.sprints = pruneMap(d.sprints, LIM.sprints, now, fixSprint);
   out.dailies = pruneMap(d.dailies, LIM.dailies, now, fixDaily);
+  out.alerts = pruneMap(d.alerts, LIM.alerts, now, fixAlert);
   out.last = idOk(d.last) ? d.last : '';
   out.lastU = num(d.lastU);
   out.tabs = Array.isArray(d.tabs) ? [...new Set(d.tabs.filter(k => TABKEYS.includes(k)))] : [];
@@ -171,7 +185,7 @@ function mergeState(a, b, now) {
   a = sanitizeState(a, now);
   b = sanitizeState(b, now);
   const out = emptyState();
-  for (const k of ['projects', 'states', 'teams', 'inits', 'blocks', 'sprints']) out[k] = mergeMap(a[k], b[k]);
+  for (const k of ['projects', 'states', 'teams', 'inits', 'blocks', 'sprints', 'alerts']) out[k] = mergeMap(a[k], b[k]);
   out.dailies = mergeMap(a.dailies, b.dailies, mergeDaily);
   const wl = a.lastU >= b.lastU ? a : b;
   out.last = wl.last; out.lastU = wl.lastU;

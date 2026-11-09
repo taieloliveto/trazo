@@ -79,6 +79,9 @@ const blocksOf = pr => live(D().blocks).filter(b => b.pr === pr && D().inits[b.i
 const stateOf = id => { const s = D().states[id]; return s && !s.del ? s : null; };
 const teamOf = id => { const t = D().teams[id]; return t && !t.del ? t : null; };
 const isDone = i => !!stateOf(i.st)?.dn;
+/* Avisos "A tener en cuenta" del roadmap */
+const alertsOf = pr => live(D().alerts).filter(x => x.pr === pr).sort((a, b) => a.s.localeCompare(b.s) || a.c - b.c);
+const ALV = { red: ['Rojo', 'Importante'], yellow: ['Amarillo', 'Atención'], gray: ['Gris', 'Informativo'] };
 /* Sprints */
 const sprintsOf = pr => live(D().sprints).filter(x => x.pr === pr).sort((a, b) => a.s.localeCompare(b.s) || a.c - b.c);
 const spSt = sp => sp.cl || sp.e < today() ? 'done' : sp.s > today() ? 'fut' : 'cur';
@@ -219,6 +222,9 @@ function sampleProject() {
     const i = newInit(p.id, { n, dl: dl ? addD(mon, dl) : '', st: sts[s], p: pr, o: k + 1 });
     bl.forEach(([t, a, len, lb]) => put('blocks', { pr: p.id, in: i.id, tm: tm[t], s: addD(mon, a), e: addD(mon, a + len - 1), lb: lb || '' }));
   });
+  put('alerts', { pr: p.id, t: 'Vacaciones IT', lv: 'red', s: addD(mon, 7), e: addD(mon, 11) });
+  put('alerts', { pr: p.id, t: 'Feriado', lv: 'yellow', s: addD(mon, 17), e: addD(mon, 17) });
+  put('alerts', { pr: p.id, t: 'Congelamiento de deploys (fin de mes)', lv: 'gray', s: addD(mon, 22), e: addD(mon, 27) });
   /* tres sprints de dos semanas: el anterior (cerrado), el actual y el próximo */
   const ins = Object.values(D().inits).filter(i => i.pr === p.id).sort((a, b) => a.o - b.o).map(i => i.id);
   put('sprints', { pr: p.id, n: 'Sprint 15', s: addD(mon, -14), e: addD(mon, -3), off: 0, goal: 'Cerrar la automatización de órdenes y arrancar el rediseño de agenda.', ins: [ins[4], ins[0]], dn: [ins[4]], cl: true });
@@ -405,6 +411,21 @@ function blockHtml(b, T, lane, p) {
   const desc = `${p.gb === 't' ? (tm ? tm.n : 'Sin equipo') : it.n}${b.lb ? ' · ' + b.lb : ''}: ${dm(b.s)} → ${dm(b.e)} (${days} ${days === 1 ? 'día' : 'días'})`;
   return `<button class="blk c-${tm ? tm.col : 'gray'}${s < 0 ? ' cl' : ''}${e > T.n - 1 ? ' cr' : ''}" data-b="${esc(b.id)}" style="left:${l * T.dw}px;width:${(r - l + 1) * T.dw}px;top:${RP + lane * LH}px" title="${esc(txt + ' — ' + desc)}" aria-label="${esc((p.gb === 't' ? it.n + ' · ' : '') + desc)}. Flechas para mover, Mayús + flechas para cambiar la duración."><i class="hl" aria-hidden="true"></i><span>${esc(txt)}${b.lb ? ` <em>${esc(b.lb)}</em>` : ''}</span><i class="hr" aria-hidden="true"></i></button>`;
 }
+/* Carriles de avisos: si el texto va al costado de la barra, ese espacio también cuenta para no pisar al siguiente */
+const alertOut = (a, T) => { const l = Math.max(0, dn(a.s) - T.d0), r = Math.min(T.n - 1, dn(a.e) - T.d0); return (r - l + 1) * T.dw < a.t.length * 7.2 + 34; };
+function alertLanes(als, T) {
+  const vis = als.map(a => ({ id: a.id, s: dn(a.s), e: dn(a.e) + (alertOut(a, T) ? Math.ceil((a.t.length * 7.2 + 44) / T.dw) : 0) })).sort((a, b) => a.s - b.s), ends = [], at = {};
+  for (const v of vis) { let k = ends.findIndex(x => x < v.s); if (k < 0) { k = ends.length; ends.push(v.e); } else ends[k] = v.e; at[v.id] = k; }
+  return { at, n: Math.max(1, ends.length) };
+}
+function alertHtml(a, T, lane) {
+  const s = dn(a.s) - T.d0, e = dn(a.e) - T.d0;
+  if (e < 0 || s > T.n - 1) return '';
+  const l = Math.max(0, s), r = Math.min(T.n - 1, e), days = e - s + 1;
+  const desc = `${a.t}: ${dm(a.s)} → ${dm(a.e)} (${days} ${days === 1 ? 'día' : 'días'}) · ${ALV[a.lv][1]}`;
+  const out = alertOut(a, T);      // si no entra el texto, va al costado de la barra
+  return `<button class="blk alr al-${a.lv}${out ? ' out' : ''}${s < 0 ? ' cl' : ''}${e > T.n - 1 ? ' cr' : ''}" data-b="${esc(a.id)}" data-kind="alerts" style="left:${l * T.dw}px;width:${(r - l + 1) * T.dw}px;top:${RP + lane * LH}px" title="${esc(desc)}" aria-label="Aviso: ${esc(desc)}. Flechas para mover, Mayús + flechas para cambiar la duración."><i class="hl" aria-hidden="true"></i><span>${a.lv === 'gray' ? '' : '⚠ '}${esc(a.t)}</span><i class="hr" aria-hidden="true"></i></button>`;
+}
 function bodyPlan(p) {
   const T = tl(p), { months, segs } = segsOf(T), W = T.n * T.dw, rs = rowsOf(p), td = dn(today()) - T.d0;
   if (p.gb === 't' && !teamsOf(p.id).length) return `<div class="empty"><div class="big" aria-hidden="true">👥</div><p><b>Agregá equipos o personas</b> para ver la carga de cada uno.</p><button class="btn auto" data-a="ptab" data-t="teams">Ir a Equipos</button></div>`;
@@ -433,7 +454,9 @@ ${td >= 0 && td < T.n ? `<i class="tdh" style="left:${td * T.dw + T.dw / 2}px">H
     const dlm = dl >= 0 && dl < T.n ? `<i class="dlm${isDone(r.i) ? ' ok' : ''}" style="left:${dl * T.dw + T.dw / 2}px" title="Deadline: ${esc(dm(r.i.dl))}"></i>` : '';
     return `<div class="rr" data-row="${esc(r.key)}" data-k="${r.kind}"${r.kind === 'i' ? ` data-rid="${esc(r.key)}"` : ''}><div class="rl">${r.kind === 'i' ? grip(r.i) : ''}${lab}</div><div class="rt" style="width:${W}px;min-height:${h}px">${dlm}${r.blocks.map(b => blockHtml(b, T, at[b.id], p)).join('')}</div></div>`;
   }).join('');
-  return `<div id="rm" class="rm g-${T.g}${sps.length ? ' hs' : ''}" style="--dw:${T.dw}px"><div class="rmi" style="width:calc(var(--lw) + ${W}px)">${head}<div class="rb"><div class="rgl" style="width:${W}px">${lines}</div>${body}</div></div></div>`;
+  const als = alertsOf(p.id), al = alertLanes(als, T), ah = al.n * LH + RP + 1;
+  const alertRow = `<div class="rr rra" data-row="" data-k="n"><div class="rl"><div class="rlb al"><span class="rn">⚑ A tener en cuenta</span><small>${RO ? 'Vacaciones, feriados, etc.' : '<button class="lnk" data-a="alnew">+ Agregar aviso</button>'}</small></div></div><div class="rt" style="width:${W}px;min-height:${ah}px">${als.map(a => alertHtml(a, T, al.at[a.id])).join('')}</div></div>`;
+  return `<div id="rm" class="rm g-${T.g}${sps.length ? ' hs' : ''}" style="--dw:${T.dw}px"><div class="rmi" style="width:calc(var(--lw) + ${W}px)">${head}<div class="rb"><div class="rgl" style="width:${W}px">${lines}</div>${alertRow}${body}</div></div></div>`;
 }
 
 /* --- Equipos --- */
@@ -513,6 +536,7 @@ ${tile(late.length, 'Atrasadas', late.length ? 'Deadline vencido sin terminar' :
 <div class="hbr" title="Trabajo terminado: ${done.length} de ${total} iniciativas"><span>Trabajo terminado</span><span class="hbt"><i class="pl" style="width:${wp}%"></i></span><b>${wp}%</b></div></div>
 <p class="mut small" style="margin-top:12px">Si el avance queda muy por detrás del tiempo, el sprint está en riesgo.</p></section>
 <section class="card"><h2>Iniciativas por estado</h2>${sts.length ? `<div class="hb">${sts.map(({ s, n }) => `<div class="hbr" title="${esc(s.n)}: ${n}"><span><i class="dot c-${s.col}"></i>${esc(s.n)}</span><span class="hbt"><i class="c-${s.col}" style="width:${n / mx * 100}%"></i></span><b>${n}</b></div>`).join('')}</div>` : '<p class="mut small">El sprint no tiene iniciativas.</p>'}</section></div>
+${(() => { const as = alertsOf(p.id).filter(a => a.s <= sp.e && a.e >= sp.s); return as.length ? `<section class="card"><h2>⚑ A tener en cuenta en este sprint</h2><div class="alls">${as.map(a => `<div class="alli"><span class="aldot al-${a.lv}"></span><b>${esc(a.t)}</b><span class="mut small">${esc(dm(a.s))} → ${esc(dm(a.e))}</span></div>`).join('')}</div></section>` : ''; })()}
 <section class="card"><h2>Carga de equipos en el sprint</h2><p class="mut small">Días hábiles planificados en el roadmap dentro del sprint, contra días disponibles × capacidad.</p>${teams.length ? `<div class="hb">${teams.map(r => `<div class="hbr wide" title="${esc(r.x.n)}: ${r.days} días planificados de ${r.capD} disponibles (${av} días × capacidad ${capOf(r.x)})"><span><i class="dot c-${r.x.col}"></i>${esc(r.x.n)} <small class="mut">· ${r.n} inic.</small></span><span class="hbt"><i class="${r.pc > 100 ? 'lt' : 'pl'}" style="width:${Math.min(100, r.pc)}%"></i></span><b class="${r.pc > 100 ? 'late' : ''}">${r.pc > 100 ? ICO_WARN : ''}${r.days}/${r.capD} días</b></div>`).join('')}</div>` : '<p class="mut small">Las iniciativas del sprint todavía no tienen plazos en el roadmap dentro de estas fechas.</p>'}
 ${noPlan.length ? `<p class="small warnt" style="margin-top:12px">${ICO_WARN} ${noPlan.length} ${noPlan.length === 1 ? 'iniciativa abierta no tiene' : 'iniciativas abiertas no tienen'} plazos dentro del sprint: ${noPlan.map(i => esc(i.n)).join(', ')}.</p>` : ''}</section>
 <section class="card"><h2>Iniciativas del sprint <span class="cn">${total}</span></h2>${total ? `<div class="rtbl">${rows.map(i => { const s = stateOf(i.st), lt = !isDone(i) && i.dl && i.dl < t; const tms = [...new Set(bl.filter(b => b.in === i.id).map(b => b.tm))].map(teamOf).filter(Boolean); return `<div class="rtr${isDone(i) ? ' done' : ''}"><button class="itn" data-a="iopen" data-id="${esc(i.id)}"><span>${esc(i.n)}</span></button>
@@ -813,6 +837,7 @@ function sheetHtml() {
     case 'pmenu': return `<div class="sh" role="dialog" aria-modal="true" aria-label="Opciones del proyecto"><h2>${p ? nm(p) : 'Proyecto'}</h2><button class="rowb" data-a="pedit">Editar nombre y emoji</button><button class="rowb" data-a="states">Editar estados</button><button class="rowb" data-a="share">Compartir (solo lectura)</button><button class="rowb" data-a="csv">Exportar iniciativas (Excel / CSV)</button><button class="rowb dng" data-a="pdel">Eliminar proyecto</button></div>`;
     case 'init': return initSheet();
     case 'block': return blockSheet();
+    case 'alert': return alertSheet();
     case 'states': return `<div class="sh wide" role="dialog" aria-modal="true" aria-label="Estados"><h2>Estados del proyecto</h2><p class="mut small">Ordená, renombrá, cambiá colores o sumá estados. Marcá «Terminado» en los que cierran una iniciativa.</p>${tagEditor('states', curP)}<button class="btn" data-a="close" style="margin-top:16px">Listo</button></div>`;
     case 'color': { const e = D()[s.k][s.id]; if (!e) return '';
       return `<div class="sh" role="dialog" aria-modal="true" aria-label="Color"><h2>Color de «${esc(e.n)}»</h2><div class="cgrid">${COLORS.map(c => `<button class="cs c-${c}" data-a="setcol" data-c="${c}" aria-pressed="${e.col === c}"><span>${esc(e.n)}</span><small>${COLN[c]}</small></button>`).join('')}</div><button class="btn ghost" data-a="close">Cancelar</button></div>`; }
@@ -850,7 +875,7 @@ function renderSheet() {
   d.scrollTop = keep;
   if (RO) {
     d.querySelectorAll('input,select,textarea').forEach(x => { x.disabled = true; });
-    d.querySelectorAll('button[type=submit],.btn.danger,[data-a=badd],[data-a=bteamnew],[data-a=bteamadd],[data-a=bteam],[data-a=pickcol],[data-a=tgmv],[data-a=tgdel],.tga').forEach(x => { x.hidden = true; });
+    d.querySelectorAll('button[type=submit],.btn.danger,[data-a=alv]:not([aria-pressed=true]),[data-a=badd],[data-a=bteamnew],[data-a=bteamadd],[data-a=bteam],[data-a=pickcol],[data-a=tgmv],[data-a=tgdel],.tga').forEach(x => { x.hidden = true; });
     const c = d.querySelector('[data-a=close]'); if (c) c.textContent = 'Cerrar';
     d.querySelector('h2')?.insertAdjacentHTML('beforeend', ' <span class="rob sm">Solo lectura</span>');
   }
@@ -887,6 +912,23 @@ function openNewBlock(o, back) {
   const s = o.s || today(), e = o.e || addD(s, (DEF_LEN[p.g] || 7) - 1);
   openSheet({ t: 'block', fixIn: !!o.fixIn, back, draft: { id: '', in: o.in || '', tm: o.tm !== undefined ? o.tm : lt, lb: '', s, e } });
 }
+function openNewAlert(s, e) {
+  const p = P(); if (!p) return;
+  s = s || today(); e = e || addD(s, (DEF_LEN[p.g] || 7) - 1);
+  openSheet({ t: 'alert', draft: { id: '', t: '', lv: 'yellow', s, e }, focus: '#alt' });
+}
+function openAlert(id) { const a = D().alerts[id]; if (!a || a.del) return; openSheet({ t: 'alert', draft: { id: a.id, t: a.t, lv: a.lv, s: a.s, e: a.e } }); }
+function readAlert() { const x = sheet.draft, v = id => ($('#' + id) || {}).value; if ($('#alt')) Object.assign(x, { t: v('alt') || '', s: v('als') || '', e: v('ale') || '' }); }
+function alertSheet() {
+  const x = sheet.draft, isNew = !x.id;
+  return `<form id="sf" novalidate class="sh" data-f="alert" role="dialog" aria-modal="true" aria-label="${isNew ? 'Nuevo aviso' : 'Aviso'}"><h2>${isNew ? 'Nuevo aviso' : 'Aviso'}</h2>
+<p class="mut small">Aparece arriba del roadmap, en la fila «A tener en cuenta».</p>
+<label class="f">Texto<input id="alt" type="text" maxlength="120" value="${esc(x.t)}" placeholder="Ej. Vacaciones IT, feriado, congelamiento de deploys" autocomplete="off"></label>
+<div class="lab">Visibilidad</div><div class="alvs" role="group" aria-label="Visibilidad">${Object.entries(ALV).map(([k, [n, d]]) => `<button type="button" class="alv al-${k}" data-a="alv" data-v="${k}" aria-pressed="${x.lv === k}"><b>${n}</b><small>${d}</small></button>`).join('')}</div>
+<div class="two"><label class="f">Desde<input id="als" type="date" value="${esc(x.s)}"></label><label class="f">Hasta<input id="ale" type="date" value="${esc(x.e)}"></label></div>
+<p class="err" role="alert">${esc(sheet.err || '')}</p>
+<button class="btn" type="submit">${isNew ? 'Crear aviso' : 'Guardar'}</button>${isNew ? '' : '<button class="btn danger" type="button" data-a="aldel">Eliminar aviso</button>'}<button class="btn ghost" type="button" data-a="close">Cancelar</button></form>`;
+}
 function openBlock(id, back) {
   const b = D().blocks[id]; if (!b || b.del) return;
   openSheet({ t: 'block', back, draft: { id: b.id, in: b.in, tm: b.tm, lb: b.lb, s: b.s, e: b.e } });
@@ -902,6 +944,15 @@ function submitSheet() {
     if (s.t === 'newproj') { const p = newProject(n, e); touch(); sheet = null; openProject(p.id); toast('Proyecto creado. Empezá cargando iniciativas ✍️'); return; }
     const p = P(); if (p) { upd('projects', p.id, { n: n.slice(0, 80), e: firstEmoji(e) }); touch(); }
     sheet = null; render(); return;
+  }
+  if (f === 'alert') {
+    readAlert(); const x = s.draft; x.t = x.t.trim();
+    if (!x.t) { s.err = 'Escribí el texto del aviso'; s.focus = '#alt'; renderSheet(); return; }
+    if (!x.s || !x.e) { s.err = 'Completá las dos fechas'; renderSheet(); return; }
+    if (x.e < x.s) [x.s, x.e] = [x.e, x.s];
+    const o = { t: x.t.slice(0, 120), lv: x.lv, s: x.s, e: x.e };
+    if (x.id) upd('alerts', x.id, o); else put('alerts', { pr: curP, ...o });
+    touch(); sheet = null; render(); return;
   }
   if (f === 'sprint') {
     readSprint(); const x = s.draft; x.n = x.n.trim();
@@ -963,9 +1014,9 @@ document.addEventListener('pointerdown', e => {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   const p = P(), T = tl(p), row = rt.parentElement, blk = e.target.closest('.blk');
   if (blk) {
-    const b = D().blocks[blk.dataset.b]; if (!b) return;
+    const kind = blk.dataset.kind || 'blocks', b = D()[kind][blk.dataset.b]; if (!b) return;
     const mode = e.target.classList.contains('hl') ? 'l' : e.target.classList.contains('hr') ? 'r' : 'm';
-    drag = { kind: 'blk', mode, b, el: blk, rt, T, x0: e.clientX, day0: dayAt(rt, e.clientX, T), s0: b.s, e0: b.e, ns: b.s, ne: b.e, moved: false };
+    drag = { kind: 'blk', ek: kind, mode, b, el: blk, rt, T, x0: e.clientX, day0: dayAt(rt, e.clientX, T), s0: b.s, e0: b.e, ns: b.s, ne: b.e, moved: false };
     blk.setPointerCapture(e.pointerId); e.preventDefault();
     return;
   }
@@ -1000,11 +1051,17 @@ function endDrag(e, cancel) {
   setTimeout(() => { dragging = false; }, 0);
   if (!d || cancel) { if (d && d.g) d.g.remove(); if (d && d.kind === 'blk') paint(); return; }
   const T = d.T, p = P();
+  if (d.rk === 'n' && d.kind !== 'blk') {          // fila "A tener en cuenta"
+    if (d.kind === 'tap') { openNewAlert(fromDn(T.d0 + d.day)); return; }
+    d.g.remove();
+    if (!d.moved) { openNewAlert(fromDn(T.d0 + d.a)); return; }
+    openNewAlert(fromDn(T.d0 + Math.min(d.a, d.b)), fromDn(T.d0 + Math.max(d.a, d.b))); return;
+  }
   const preset = d.rk === 'i' ? { in: d.row, fixIn: true } : { tm: d.row };
   if (d.kind === 'tap') { openNewBlock({ ...preset, s: fromDn(T.d0 + d.day) }); return; }
   if (d.kind === 'blk') {
-    if (!d.moved) { openBlock(d.b.id); return; }
-    if (d.ns !== d.s0 || d.ne !== d.e0) { upd('blocks', d.b.id, { s: d.ns, e: d.ne }); touch(); }
+    if (!d.moved) { d.ek === 'alerts' ? openAlert(d.b.id) : openBlock(d.b.id); return; }
+    if (d.ns !== d.s0 || d.ne !== d.e0) { upd(d.ek, d.b.id, { s: d.ns, e: d.ne }); touch(); }
     paint(); return;
   }
   d.g.remove();
@@ -1021,10 +1078,10 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { if (rdrag) { endSort(true); return; } if (drag) { endDrag(e, true); return; } if (sheet) { closeSheet(); return; } if (onb >= 0) { closeOnb(); return; } if (full) { setFull(false); return; } }
   const blk = e.target.closest?.('.blk'); if (RO || !blk || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
   e.preventDefault();
-  const b = D().blocks[blk.dataset.b]; if (!b) return;
+  const ek = blk.dataset.kind || 'blocks', b = D()[ek][blk.dataset.b]; if (!b) return;
   const k = e.key === 'ArrowLeft' ? -1 : 1;
-  if (e.shiftKey) { const ne = addD(b.e, k); if (ne >= b.s) upd('blocks', b.id, { e: ne }); }
-  else upd('blocks', b.id, { s: addD(b.s, k), e: addD(b.e, k) });
+  if (e.shiftKey) { const ne = addD(b.e, k); if (ne >= b.s) upd(ek, b.id, { e: ne }); }
+  else upd(ek, b.id, { s: addD(b.s, k), e: addD(b.e, k) });
   touch(); paint();
   $(`.blk[data-b="${CSS.escape(b.id)}"]`)?.focus();
 });
@@ -1074,6 +1131,7 @@ function exportData() {
   const out = { exportado: new Date().toISOString(), proyectos: projects().map(p => ({
     nombre: p.n, emoji: p.e, estados: statesOf(p.id).map(s => ({ nombre: s.n, color: s.col, terminado: s.dn })), equipos: teamsOf(p.id).map(t => ({ nombre: t.n, color: t.col })),
     sprints: sprintsOf(p.id).map(x => ({ nombre: x.n, inicio: x.s, fin: x.e, diasDisponibles: availDays(x), objetivo: x.goal, estado: SPST[spSt(x)][0], iniciativas: spInits(x).map(i => i.n) })),
+    avisos: alertsOf(p.id).map(a => ({ texto: a.t, desde: a.s, hasta: a.e, visibilidad: ALV[a.lv][1] })),
     dailies: dailiesOf(p.id).map(x => ({ fecha: x.d, avisos: x.notes, iniciativas: Object.entries(x.items).map(([id, it]) => ({ iniciativa: D().inits[id]?.n || '', estado: stateOf(it.st)?.n || '', comentario: it.c })) })),
     iniciativas: sortedInits(p).map(i => ({ nombre: i.n, deadline: i.dl, estado: stateOf(i.st)?.n || '', prioridad: PRIO[i.p].n, enlace: i.ln, notas: i.no,
       plazos: blocksOf(p.id).filter(b => b.in === i.id).map(b => ({ equipo: teamOf(b.tm)?.n || '', etiqueta: b.lb, desde: b.s, hasta: b.e })) }))
@@ -1106,7 +1164,7 @@ const A = {
     const p = P(); if (!p) return;
     ask(`¿Eliminar «${p.n}»?`, 'Se borran sus iniciativas, equipos, estados y plazos.', 'Sí, eliminar proyecto', () => {
       const u = now();
-      for (const k of ['states', 'teams', 'inits', 'blocks', 'sprints', 'dailies']) live(D()[k]).filter(x => x.pr === p.id).forEach(x => { x.del = true; x.u = u; });
+      for (const k of ['states', 'teams', 'inits', 'blocks', 'sprints', 'dailies', 'alerts']) live(D()[k]).filter(x => x.pr === p.id).forEach(x => { x.del = true; x.u = u; });
       p.del = true; p.u = u; touch(); curP = ''; go('projects'); toast('Proyecto eliminado');
     });
   },
@@ -1229,6 +1287,9 @@ const A = {
     render(); toast('Daily guardada');
   },
   ddel(b) { const x = D().dailies[b.dataset.id]; if (!x) return; ask(`¿Eliminar la ${dailyTitle(x.d)}?`, 'Se borran sus comentarios y avisos.', 'Sí, eliminar', () => { x.del = true; x.u = now(); touch(); sheet = null; render(); toast('Daily eliminada', 'Deshacer', () => { x.del = false; x.u = now(); touch(); render(); }); }); },
+  alnew() { openNewAlert(); },
+  alv(b) { readAlert(); sheet.draft.lv = b.dataset.v; renderSheet(); },
+  aldel() { const a = D().alerts[sheet.draft.id]; if (!a) return; a.del = true; a.u = now(); touch(); sheet = null; render(); toast('Aviso eliminado', 'Deshacer', () => { a.del = false; a.u = now(); touch(); render(); }); },
   editname() { openSheet({ t: 'name' }); },
   syncnow() { if (!S.dirty) S.dirty = true; sync().then(ok => toast(ok ? 'Sincronizado ✓' : 'No se pudo sincronizar')); },
   theme(b) { L.theme = b.dataset.v; saveL(); applyTheme(); render(); },
@@ -1359,7 +1420,7 @@ function refreshTags() { if (sheet && sheet.t === 'states') renderSheet(); else 
 const RO_OK = new Set(['dnew', 'dedit', 'dsave', 'dcancel', 'yes', 'ptab', 'flt', 'gran', 'gb', 'rmnav', 'rmtoday', 'full', 'dwn', 'dwnav', 'iopen', 'bopen', 'spedit', 'close', 'theme']);
 document.addEventListener('click', e => {
   const blk = e.target.closest('.blk');
-  if (blk && e.detail === 0) { openBlock(blk.dataset.b); return; }     // Enter o espacio sobre un plazo
+  if (blk && e.detail === 0) { blk.dataset.kind === 'alerts' ? openAlert(blk.dataset.b) : openBlock(blk.dataset.b); return; }     // Enter o espacio sobre un plazo
   const b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
   if (tabSuppress) { tabSuppress = false; if (b.dataset.a === 'ptab') { e.preventDefault(); return; } }
   if (RO && !RO_OK.has(b.dataset.a)) { e.preventDefault(); return; }

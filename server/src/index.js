@@ -105,7 +105,7 @@ export default {
         const p = Object.values(d.projects).find(x => x.sh === tok && !x.del);
         if (!p) return gone();
         const pick = k => Object.fromEntries(Object.entries(d[k]).filter(([, x]) => x.pr === p.id && !x.del));
-        return j({ pr: p.id, at: Date.now(), data: { projects: { [p.id]: p }, states: pick('states'), teams: pick('teams'), inits: pick('inits'), blocks: pick('blocks'), sprints: pick('sprints'), dailies: pick('dailies') } });
+        return j({ pr: p.id, at: Date.now(), data: { projects: { [p.id]: p }, states: pick('states'), teams: pick('teams'), inits: pick('inits'), blocks: pick('blocks'), sprints: pick('sprints'), dailies: pick('dailies'), alerts: pick('alerts') } });
       }
 
       /* Quien mira por link solo puede crear y escribir dailies de ese proyecto (no puede borrarlas ni tocar nada más). */
