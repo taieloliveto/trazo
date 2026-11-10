@@ -674,3 +674,31 @@ i.tm{background:var(--mut)!important}
 .blk.alr.out span{position:absolute;left:calc(100% + 6px);top:50%;transform:translateY(-50%);overflow:visible;color:var(--fg);font-weight:700;text-shadow:0 0 3px var(--card),0 0 3px var(--card)}
 .blk.alr.out.al-red span{color:var(--danger)}
 .rra .rt{overflow:visible}
+.bdot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--cb);box-shadow:0 0 0 1.5px var(--card);margin-right:4px}
+
+/* Compartir: secciones, pedidos e invitaciones */
+.shs{padding:14px 0;border-top:1px solid var(--line2)}
+.shs h3{margin:0 0 4px;font-size:1rem}
+.shs p{margin:0 0 10px}
+.shs .btn{margin-top:4px}
+.shf{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.lnk.dng{color:var(--danger)}
+.edi{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--line2);font-size:.92rem}
+.edi span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rqs{background:color-mix(in srgb,var(--acc-soft) 50%,transparent);border-radius:14px;padding:12px 14px;border:0;margin-bottom:6px}
+.rqi{display:flex;align-items:center;gap:10px;padding:8px 0}
+.rqi>div{flex:1;min-width:0;display:flex;flex-direction:column}
+.rqi small{color:var(--mut)}
+.btn.sm{min-height:36px;font-size:.9rem;padding:0 14px}
+.shb{position:relative}
+.shb .nb{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;border-radius:9px;background:var(--danger);color:#fff;font-size:.7rem;font-style:normal;font-weight:800;display:grid;place-items:center;padding:0 5px}
+.rob.ed{background:color-mix(in srgb,var(--warn) 18%,var(--card));color:var(--warn)}
+a.brand{text-decoration:none;color:inherit}
+a.pcard{text-decoration:none;color:inherit}
+.pcard.shw{border-style:dashed}
+.ed [data-a=share],.ed [data-a=pdel]{display:none!important}
+/* Ajustes: volver */
+.back{display:inline-flex;align-items:center;gap:6px;margin:0 0 10px -6px;padding:6px 10px;border:0;border-radius:10px;background:none;color:var(--acc);font-weight:700;font-size:.95rem}
+.back span{font-size:1.4rem;line-height:1}
+.back:hover{background:var(--line2)}
+.ov.still,.ov.still .sh{animation:none}

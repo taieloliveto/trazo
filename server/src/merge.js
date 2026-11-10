@@ -13,11 +13,16 @@
      teams:    { id: { id, pr, n, col, cap, o, c, u, del } } equipos o personas de un proyecto · cap iniciativas en paralelo (0 = 2 por defecto)
      inits:    { id: { id, pr, n, dl, st, p, ln, no, o, c, u, del } }
                   iniciativa · dl deadline 'AAAA-MM-DD' · st estado · p prioridad (urg|high|mid|low|'') · ln enlace · no notas
-     blocks:   { id: { id, pr, in, tm, s, e, lb, c, u, del } }
-                  plazo en la planificación: iniciativa `in`, equipo `tm`, del día `s` al día `e` (inclusive), etiqueta `lb`
+     blocks:   { id: { id, pr, in, tm, tms, s, e, lb, c, u, del } }
+                  plazo en la planificación: iniciativa `in`, equipos/personas `tms` (el primero también en `tm`),
+                  del día `s` al día `e` (inclusive), etiqueta `lb`
      sprints:  { id: { id, pr, n, s, e, off, goal, ins, dn, cl, c, u, del } }
                   sprint: del día `s` al día `e` · off días no disponibles (feriados) · goal objetivo
                   ins iniciativas incluidas · cl cerrado · dn iniciativas terminadas al cerrarlo
+     shares:   { idProyecto: { id, pr, sh, se, eds: [{ m, k }], eU, rq: [{ m, n, t }], rqU, c, u, del } }
+                  cómo se comparte un proyecto, aparte del proyecto para que ningún cambio lo pise:
+                  sh link de visualización · se link de edición · eds personas (email) con permiso de edición y su clave
+                  rq pedidos de permiso de edición (lo escribe el servidor) · eU y rqU marcan qué parte cambió
      alerts:   { id: { id, pr, s, e, t, lv, c, u, del } }
                   aviso "a tener en cuenta" del roadmap (vacaciones, feriados, congelamientos)
                   t texto · lv nivel (red | yellow | gray)
@@ -29,7 +34,7 @@
    } */
 
 const DAY = 86400000, TOMB_TTL = 30 * DAY;
-const LIM = { projects: 200, states: 2000, teams: 2000, inits: 5000, blocks: 12000, sprints: 3000, dailies: 5000, alerts: 3000 };
+const LIM = { projects: 200, states: 2000, teams: 2000, inits: 5000, blocks: 12000, sprints: 3000, dailies: 5000, alerts: 3000, shares: 200 };
 const idOk = s => typeof s === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(s);
 const str = (s, n) => typeof s === 'string' ? s.slice(0, n) : '';
 const num = x => Number.isFinite(+x) ? +x : 0;
@@ -56,7 +61,7 @@ function firstEmoji(s) {
   return isEmoji(g) ? g : '';
 }
 
-function emptyState() { return { name: '', nameU: 0, projects: {}, states: {}, teams: {}, inits: {}, blocks: {}, sprints: {}, dailies: {}, alerts: {}, last: '', lastU: 0, tabs: [], tabsU: 0 }; }
+function emptyState() { return { name: '', nameU: 0, projects: {}, states: {}, teams: {}, inits: {}, blocks: {}, sprints: {}, dailies: {}, alerts: {}, shares: {}, last: '', lastU: 0, tabs: [], tabsU: 0 }; }
 
 const isObj = x => x && typeof x === 'object';
 const col = c => COLORS.includes(c) ? c : 'gray';
@@ -86,7 +91,9 @@ function fixBlock(r, id) {
   let s = ymdOk(r.s) ? r.s : '', e = ymdOk(r.e) ? r.e : '';
   if (!s || !e) { if (!del) return null; s = s || '2000-01-01'; e = e || s; }
   if (e < s) [s, e] = [e, s];
-  return { id, pr: r.pr, in: r.in, tm: idOk(r.tm) ? r.tm : '', s, e, lb: str(r.lb, 30).trim(), c: num(r.c), u: num(r.u), del };
+  let tms = Array.isArray(r.tms) ? [...new Set(r.tms.filter(idOk))].slice(0, 20) : [];
+  if (!tms.length && idOk(r.tm)) tms = [r.tm];
+  return { id, pr: r.pr, in: r.in, tm: tms[0] || '', tms, s, e, lb: str(r.lb, 30).trim(), c: num(r.c), u: num(r.u), del };
 }
 
 const idList = (a, max) => Array.isArray(a) ? [...new Set(a.filter(idOk))].slice(0, max) : [];
@@ -100,6 +107,28 @@ function fixSprint(r, id) {
     goal: del ? '' : str(r.goal, 1000), ins: del ? [] : idList(r.ins, 300), dn: del ? [] : idList(r.dn, 300), cl: !!r.cl, c: num(r.c), u: num(r.u), del };
 }
 
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const emailOk = m => typeof m === 'string' && m.length <= 254 && EMAIL.test(m);
+function fixShare(r, id) {
+  if (!isObj(r) || !idOk(r.pr)) return null;
+  const eds = [], seen = new Set();
+  for (const x of Array.isArray(r.eds) ? r.eds.slice(0, 50) : []) {
+    if (!isObj(x)) continue; const m = String(x.m || '').trim().toLowerCase();
+    if (!emailOk(m) || !shOk(x.k) || seen.has(m)) continue; seen.add(m); eds.push({ m, k: x.k });
+  }
+  const rq = [], rs = new Set();
+  for (const x of Array.isArray(r.rq) ? r.rq.slice(0, 30) : []) {
+    if (!isObj(x)) continue; const m = String(x.m || '').trim().toLowerCase();
+    if (!emailOk(m) || rs.has(m)) continue; rs.add(m); rq.push({ m, n: str(x.n, 60).trim(), t: num(x.t) });
+  }
+  return { id, pr: r.pr, sh: shOk(r.sh) ? r.sh : '', se: shOk(r.se) ? r.se : '', eds, eU: num(r.eU), rq, rqU: num(r.rqU), c: num(r.c), u: num(r.u), del: !!r.del };
+}
+function mergeShare(x, y) {
+  if (!x) return y; if (!y) return x;
+  const out = { ...(x.u >= y.u ? x : y) }, e = x.eU >= y.eU ? x : y, q = x.rqU >= y.rqU ? x : y;
+  Object.assign(out, { sh: e.sh, se: e.se, eds: e.eds, eU: e.eU, rq: q.rq, rqU: q.rqU });
+  return out;
+}
 function fixAlert(r, id) {
   if (!isObj(r) || !idOk(r.pr)) return null;
   const del = !!r.del;
@@ -165,6 +194,7 @@ function sanitizeState(d, now) {
   out.sprints = pruneMap(d.sprints, LIM.sprints, now, fixSprint);
   out.dailies = pruneMap(d.dailies, LIM.dailies, now, fixDaily);
   out.alerts = pruneMap(d.alerts, LIM.alerts, now, fixAlert);
+  out.shares = pruneMap(d.shares, LIM.shares, now, fixShare);
   out.last = idOk(d.last) ? d.last : '';
   out.lastU = num(d.lastU);
   out.tabs = Array.isArray(d.tabs) ? [...new Set(d.tabs.filter(k => TABKEYS.includes(k)))] : [];
@@ -187,6 +217,7 @@ function mergeState(a, b, now) {
   const out = emptyState();
   for (const k of ['projects', 'states', 'teams', 'inits', 'blocks', 'sprints', 'alerts']) out[k] = mergeMap(a[k], b[k]);
   out.dailies = mergeMap(a.dailies, b.dailies, mergeDaily);
+  out.shares = mergeMap(a.shares, b.shares, mergeShare);
   const wl = a.lastU >= b.lastU ? a : b;
   out.last = wl.last; out.lastU = wl.lastU;
   const wt = a.tabsU >= b.tabsU ? a : b;
@@ -196,4 +227,4 @@ function mergeState(a, b, now) {
   return sanitizeState(out, now);
 }
 
-export { mergeState, sanitizeState, emptyState, norm, firstEmoji, isEmoji, COLORS, PRIOS, GRANS, shOk };
+export { mergeState, sanitizeState, emptyState, norm, firstEmoji, isEmoji, COLORS, PRIOS, GRANS, shOk, emailOk };

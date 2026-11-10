@@ -133,6 +133,59 @@ await ok('link público: solo el proyecto compartido, sin cuenta, y se puede rev
   assert.equal((await call('/public/' + tk)).status, 404);
   await call('/account', 'DELETE', null, o.body.token);
 });
+await ok('el link de visualización no se pierde si otro dispositivo guarda el proyecto con datos viejos', async () => {
+  const tk = 'View1View1View1View1View1';
+  await call('/share', 'POST', { token: tk }, tok);
+  await call('/data', 'PUT', { data: { shares: { p1: { pr: 'p1', sh: tk, eU: T + 100, u: T + 100 } } } }, tok);
+  assert.equal((await call('/public/' + tk)).status, 200);
+  // un dispositivo viejo guarda el proyecto (cambió la vista) sin saber nada del link
+  await call('/data', 'PUT', { data: { projects: { p1: { n: 'Q4', g: 'd', sh: '', u: T + 200 } } } }, tok);
+  assert.equal((await call('/public/' + tk)).status, 200, 'sigue funcionando');
+});
+await ok('link de edición: edita solo ese proyecto, sin cuenta, y no toca cómo se comparte', async () => {
+  const ek = 'Edit1Edit1Edit1Edit1Edit1';
+  assert.equal((await call('/edit/' + ek)).status, 404);
+  await call('/share', 'POST', { token: ek, kind: 'edit' }, tok);
+  await call('/data', 'PUT', { data: { shares: { p1: { pr: 'p1', sh: 'View1View1View1View1View1', se: ek, eU: T + 300, u: T + 300 } } } }, tok);
+  const g = await call('/edit/' + ek);
+  assert.equal(g.status, 200); assert.equal(g.body.pr, 'p1'); assert.ok(g.body.data.inits.i1);
+  assert.equal(g.body.data.shares, undefined, 'no ve la configuración de compartir');
+  const w = await call('/edit/' + ek, 'PUT', { data: { inits: { i1: { pr: 'p1', n: 'Editada por link', u: T + 400 }, i9: { pr: 'p2', n: 'Intruso', u: T + 400 } }, projects: { p1: { n: 'Q4 renombrado', u: T + 400 }, p2: { n: 'hackeado', u: T + 400 } }, shares: { p1: { pr: 'p1', u: T + 999, eU: T + 999 } } } });
+  assert.equal(w.status, 200);
+  const d = (await call('/data', 'GET', null, tok)).body.data;
+  assert.equal(d.inits.i1.n, 'Editada por link'); assert.equal(d.inits.i9, undefined);
+  assert.equal(d.projects.p1.n, 'Q4 renombrado'); assert.equal(d.projects.p2.n, 'Privado');
+  assert.equal(d.shares.p1.se, ek, 'la configuración de compartir no cambió');
+  await call('/data', 'PUT', { data: { shares: { p1: { ...d.shares.p1, se: '', eU: T + 500 } } } }, tok);
+  assert.equal((await call('/edit/' + ek)).status, 404, 'desactivado');
+  await call('/share/' + ek, 'DELETE', null, tok);
+});
+await ok('invitación por email: hay que entrar con esa cuenta; aparece en «Compartidos conmigo»', async () => {
+  const ik = 'Invt1Invt1Invt1Invt1Invt1';
+  await call('/share', 'POST', { token: ik, kind: 'edit', who: 'Inv@B.co' }, tok);
+  const d = (await call('/data', 'GET', null, tok)).body.data;
+  await call('/data', 'PUT', { data: { shares: { p1: { ...d.shares.p1, eds: [{ m: 'inv@b.co', k: ik }], eU: T + 600 } } } }, tok);
+  assert.equal((await call('/edit/' + ik)).status, 401, 'sin cuenta no');
+  const other = await call('/signup', 'POST', { email: 'otra2@b.co', password: 'contraseña3' });
+  const r403 = await call('/edit/' + ik, 'GET', null, other.body.token);
+  assert.equal(r403.status, 403); assert.equal(r403.body.who, 'inv@b.co');
+  const inv = await call('/signup', 'POST', { email: 'inv@b.co', password: 'contraseña4' });
+  assert.equal((await call('/edit/' + ik, 'GET', null, inv.body.token)).status, 200);
+  const l = await call('/invites', 'GET', null, inv.body.token);
+  assert.equal(l.body.invites.length, 1); assert.equal(l.body.invites[0].n, 'Q4 renombrado');
+  await call('/share/' + ik, 'DELETE', null, tok);
+  assert.equal((await call('/edit/' + ik, 'GET', null, inv.body.token)).status, 404);
+  assert.equal((await call('/invites', 'GET', null, inv.body.token)).body.invites.length, 0);
+  await call('/account', 'DELETE', null, inv.body.token); await call('/account', 'DELETE', null, other.body.token);
+});
+await ok('pedido de permiso de edición desde el link de visualización', async () => {
+  const tk = 'View1View1View1View1View1';
+  assert.equal((await call('/public/' + tk + '/request', 'POST', { m: 'mal' })).status, 400);
+  assert.equal((await call('/public/' + tk + '/request', 'POST', { m: 'Pide@B.co', n: 'Ana' })).status, 200);
+  await call('/public/' + tk + '/request', 'POST', { m: 'pide@b.co', n: 'Ana' });
+  const sh = (await call('/data', 'GET', null, tok)).body.data.shares.p1;
+  assert.equal(sh.rq.length, 1); assert.equal(sh.rq[0].m, 'pide@b.co'); assert.equal(sh.rq[0].n, 'Ana');
+});
 await ok('eliminar la cuenta borra todo', async () => {
   assert.equal((await call('/account', 'DELETE', null, tok)).status, 200);
   assert.equal((await call('/data', 'GET', null, tok)).status, 401);

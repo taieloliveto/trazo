@@ -46,6 +46,7 @@ const browser = await chromium.launch();
 const errors = [];
 let n = 0;
 const step = async (name, fn) => { try { await fn(); n++; console.log('  ✓', name); } catch (e) { console.log('  ✗', name); await page.screenshot({ path: join(SHOTS, 'FAIL.png') }).catch(() => {}); throw e; } };
+const watchQ = pg => { pg.on('pageerror', e => errors.push(String(e))); pg.on('console', m => { if (m.type() === 'error' && !/status of 40[134]/.test(m.text())) errors.push(m.text()); }); };   // 401/403/404 esperados
 const watch = page => { page.on('pageerror', e => errors.push(String(e))); page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); }); };
 const shot = (page, name) => page.screenshot({ path: join(SHOTS, name + '.png') });
 const data = page => page.evaluate(() => JSON.parse(localStorage.getItem('trazo.v1')).data);
@@ -572,6 +573,109 @@ await step('compartir: link de solo lectura que se actualiza', async () => {
   await page.click('.itn:has-text("Nueva desde el dueño")'); await page.click('[data-a=idel]'); await page.click('[data-a=yes]');
   await page.click('.tabs [data-t=plan]');
 });
+const waitOk = pg => pg.waitForFunction(() => document.querySelector('.sy')?.classList.contains('ok'), null, { timeout: 8000 });
+const appLink = v => v.replace(/^https?:\/\/[^/]+\//, APP);
+await step('ajustes: flecha para volver al proyecto', async () => {
+  await page.click('[data-a=go][data-v=set]');
+  await page.waitForSelector('.back');
+  assert.ok((await page.textContent('.back')).includes('Volver a'));
+  await page.click('.back');
+  await page.waitForSelector('.v-project #rm');
+});
+await step('varias personas en un mismo plazo', async () => {
+  await page.click('.blk:not(.alr) >> nth=0');
+  await page.waitForSelector('.sh[data-f=block]');
+  const before = await page.locator('.sh .chip.tc[aria-pressed=true]').count();
+  const added = (await page.locator('.sh .chip.tc[aria-pressed=false]').first().textContent()).trim();
+  await page.click('.sh .chip.tc[aria-pressed=false] >> nth=0');
+  assert.equal(await page.locator('.sh .chip.tc[aria-pressed=true]').count(), before + 1);
+  await page.click('#sf button[type=submit]');
+  await page.waitForSelector('.blk:has-text(" + ")');
+  const b = live((await data(page)).blocks).find(x => x.tms.length === 2);
+  assert.ok(b, 'el plazo quedó con dos equipos'); assert.equal(b.tm, b.tms[0]);
+  await page.click('[data-a=gb][data-v=t]');
+  const init = live((await data(page)).inits).find(i => i.id === b.in).n;
+  assert.equal(await page.locator(`.blk:has-text("${init}")`).count() >= 2, true, 'aparece en la fila de cada equipo');
+  await shot(page, '12k-varias-personas');
+  await page.click('[data-a=gb][data-v=i]');
+  // volver a dejarlo con uno solo
+  await page.click('.blk:has-text(" + ")');
+  await page.click(`.sh .chip.tc[aria-pressed=true]:text-is("${added}")`);
+  await page.click('#sf button[type=submit]');
+  await page.waitForSelector('.ov', { state: 'detached' });
+});
+await step('link de edición: editar sin cuenta', async () => {
+  await page.click('[data-a=share]'); await page.click('[data-a=seon]'); await page.waitForSelector('#sel');
+  const link = appLink(await page.inputValue('#sel'));
+  await page.screenshot({ path: join(SHOTS, '25-compartir.png') });
+  await page.click('.sh [data-a=close]'); await waitOk(page);
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'es-AR', timezoneId: 'America/Buenos_Aires' });
+  const e = await c.newPage(); watchQ(e);
+  await e.goto(link); await e.waitForSelector('.rob.ed');
+  assert.equal(await e.locator('#af').count(), 0, 'no pide cuenta');
+  assert.equal(await e.locator('[data-a=share]:visible').count(), 0, 'no puede cambiar cómo se comparte');
+  await e.click('.tabs [data-t=inits]'); await e.waitForSelector('#addi');
+  await e.fill('#ain', 'Agregada por el editor'); await e.click('#addi button[type=submit]');
+  await e.waitForFunction(() => document.querySelector('.sy')?.textContent.startsWith('Guardado'), null, { timeout: 8000 });
+  await e.screenshot({ path: join(SHOTS, '26-editor.png') });
+  await page.click('.tabs [data-t=inits]');
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.waitForSelector('.itn:has-text("Agregada por el editor")', { timeout: 8000 });
+  await page.click('.itn:has-text("Agregada por el editor")'); await page.click('[data-a=idel]'); await page.click('[data-a=yes]');
+  await page.click('[data-a=share]'); await page.click('[data-a=seoff]'); await page.click('[data-a=yes]');
+  await page.waitForSelector('[data-a=seon]'); await page.click('.sh [data-a=close]'); await waitOk(page);
+  await e.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await e.waitForSelector('.v-gone', { timeout: 8000 });
+  await c.close();
+});
+await step('pedir permiso de edición, darlo y editar con la cuenta invitada', async () => {
+  await page.click('[data-a=share]'); await page.click('[data-a=shon]'); await page.waitForSelector('#shl');
+  const vlink = appLink(await page.inputValue('#shl'));
+  await page.click('.sh [data-a=close]'); await waitOk(page);
+  const cv = await browser.newContext({ viewport: { width: 1280, height: 820 }, locale: 'es-AR', timezoneId: 'America/Buenos_Aires' });
+  const v = await cv.newPage(); watch(v);
+  await v.goto(vlink); await v.waitForSelector('[data-a=rqedit]');
+  await v.click('[data-a=rqedit]');
+  await v.fill('#rqm', 'invitada@test.com'); await v.fill('#rqn', 'Ana');
+  await v.click('#sf button[type=submit]');
+  await v.waitForSelector('.sh:has-text("Listo")');
+  await cv.close();
+  // el dueño ve el pedido y da permiso
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.waitForSelector('.shb .nb', { timeout: 8000 });
+  await page.click('[data-a=share]');
+  await page.waitForSelector('.rqi:has-text("Ana")');
+  await page.screenshot({ path: join(SHOTS, '27-pedido.png') });
+  await page.click('[data-a=rqok]');
+  await page.waitForSelector('.edi:has-text("invitada@test.com")');
+  const ilink = appLink(await page.locator('[data-a=shcopyv]').getAttribute('data-v'));
+  await page.click('.sh [data-a=close]'); await waitOk(page);
+  // la persona invitada entra con su cuenta
+  const ci = await browser.newContext({ viewport: { width: 1280, height: 820 }, locale: 'es-AR', timezoneId: 'America/Buenos_Aires' });
+  const g = await ci.newPage(); watchQ(g);
+  await g.goto(ilink); await g.waitForSelector('[data-a=edlogin]');
+  assert.ok((await g.textContent('.v-gone')).includes('invitada@test.com'));
+  await g.click('[data-a=edlogin]'); await g.waitForSelector('#af');
+  await g.click('[data-m=signup]'); await g.fill('[data-au=email]', 'invitada@test.com'); await g.fill('[data-au=pass]', 'clave-invitada');
+  await g.click('#af button[type=submit]');
+  await g.waitForSelector('.rob.ed', { timeout: 8000 });
+  await g.click('.tabs [data-t=inits]');
+  await g.fill('#ain', 'De la invitada'); await g.click('#addi button[type=submit]');
+  await g.waitForFunction(() => document.querySelector('.sy')?.textContent.startsWith('Guardado'), null, { timeout: 8000 });
+  await g.click('a.brand'); await g.waitForSelector('.onb'); await g.click('[data-a=oskip]');
+  await g.waitForSelector('.pcard.shw');
+  await g.screenshot({ path: join(SHOTS, '28-compartidos-conmigo.png') });
+  await ci.close();
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.click('.tabs [data-t=inits]');
+  await page.waitForSelector('.itn:has-text("De la invitada")', { timeout: 8000 });
+  // limpieza: quitar permiso, borrar la iniciativa y dejar de compartir
+  await page.click('.itn:has-text("De la invitada")'); await page.click('[data-a=idel]'); await page.click('[data-a=yes]');
+  await page.click('[data-a=share]'); await page.click('[data-a=edrm]');
+  await page.click('[data-a=shoff]'); await page.click('[data-a=yes]');
+  await page.waitForSelector('[data-a=shon]'); await page.click('.sh [data-a=close]');
+  await page.click('.tabs [data-t=plan]');
+});
 await step('roadmap en pantalla completa', async () => {
   await page.click('[data-a=full]');
   await page.waitForSelector('body.rmfull');
@@ -616,8 +720,8 @@ await step('se guarda en el servidor y aparece en otro dispositivo', async () =>
   assert.equal(await m.locator('.blk:not(.alr)').count(), 3);
   await m.screenshot({ path: join(SHOTS, '13-movil-roadmap.png') });
   // tocar una fila vacía abre un plazo nuevo
-  const b = await m.locator('.rr[data-rid]').nth(0).locator('.rt').boundingBox();
-  await m.touchscreen.tap(b.x + 100, b.y + b.height / 2);
+  const b = await m.locator('.rr[data-rid]').nth(2).locator('.rt').boundingBox(), rmb = await m.locator('#rm').boundingBox();
+  await m.touchscreen.tap(rmb.x + rmb.width - 20, b.y + b.height / 2);      // una zona vacía, a la derecha
   await m.waitForSelector('.sh[data-f=block]');
   await m.waitForTimeout(500);
   assert.equal(await m.locator('.sh[data-f=block]').count(), 1, 'la ventana sigue abierta');

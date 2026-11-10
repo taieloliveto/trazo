@@ -35,13 +35,19 @@ const mondayOf = s => addD(s, -((wday(dn(s)) + 6) % 7));
 /* Link público: ?ver=CLAVE abre el proyecto compartido en solo lectura, sin cuenta y sin tocar la sesión de este navegador. */
 const RO_TOKEN = (() => { try { const v = new URLSearchParams(location.search).get('ver') || ''; return /^[A-Za-z0-9]{20,40}$/.test(v) ? v : ''; } catch (_) { return ''; } })();
 const RO = !!RO_TOKEN;
+/* Link de edición o invitación: ?ed=CLAVE abre el proyecto de otra persona para editarlo. */
+const EDIT_TOKEN = (() => { try { const v = new URLSearchParams(location.search).get('ed') || ''; return !RO && /^[A-Za-z0-9]{20,40}$/.test(v) ? v : ''; } catch (_) { return ''; } })();
+const EDIT = !!EDIT_TOKEN;
+if (EDIT) document.documentElement.classList.add('ed');
 if (RO) document.documentElement.classList.add('ro');
 let S = { email: '', token: '', server: '', data: emptyState(), dirty: false };
-if (!RO) try {
+if (!RO && !EDIT) try {
   const r = JSON.parse(localStorage.getItem(KEY) || 'null');
   if (r && typeof r === 'object') { S.email = String(r.email || ''); S.token = String(r.token || ''); S.server = String(r.server || ''); S.dirty = !!r.dirty; S.data = sanitizeState(r.data); }
 } catch (_) {}
-const save = () => { if (RO) return; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (_) {} };
+/* En modo editor solo se toma la sesión de este navegador (para las invitaciones); sus datos no se tocan. */
+if (EDIT) try { const r = JSON.parse(localStorage.getItem(KEY) || 'null'); if (r) { S.email = String(r.email || ''); S.token = String(r.token || ''); } } catch (_) {}
+const save = () => { if (RO || EDIT) return; try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (_) {} };
 /* Preferencias de este dispositivo (no se sincronizan) */
 let L = { onb: 0, theme: 'auto', tab: {}, sort: {}, flt: {}, lastTeam: {} };
 try { const r = JSON.parse(localStorage.getItem(LKEY) || 'null'); if (r && typeof r === 'object') L = { ...L, ...r }; } catch (_) {}
@@ -60,6 +66,7 @@ function applyTheme() {
 applyTheme();
 try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ((L.theme || 'auto') === 'auto') applyTheme(); }); } catch (_) {}
 
+let roMiss = 0;
 let full = false, roAt = 0, roErr = '', roGone = '';               // roadmap en pantalla completa
 let view = 'auth', sheet = null, busy = false, st = 'ok', rev = 0, curP = '', onb = -1, dragging = false, installEvt = null;
 let authMode = 'login', authErr = '', authEmail = S.email, authPass = '', authName = '';
@@ -79,6 +86,11 @@ const blocksOf = pr => live(D().blocks).filter(b => b.pr === pr && D().inits[b.i
 const stateOf = id => { const s = D().states[id]; return s && !s.del ? s : null; };
 const teamOf = id => { const t = D().teams[id]; return t && !t.del ? t : null; };
 const isDone = i => !!stateOf(i.st)?.dn;
+/* Un plazo puede tener varios equipos o personas */
+const tmsOf = b => (b.tms && b.tms.length ? b.tms : b.tm ? [b.tm] : []);
+const hasTm = (b, id) => tmsOf(b).includes(id);
+const teamsIn = b => tmsOf(b).map(teamOf).filter(Boolean);
+const teamNames = b => { const t = teamsIn(b); return t.length ? t.map(x => x.n).join(' + ') : 'Sin equipo'; };
 /* Avisos "A tener en cuenta" del roadmap */
 const alertsOf = pr => live(D().alerts).filter(x => x.pr === pr).sort((a, b) => a.s.localeCompare(b.s) || a.c - b.c);
 const ALV = { red: ['Rojo', 'Importante'], yellow: ['Amarillo', 'Atención'], gray: ['Gris', 'Informativo'] };
@@ -134,6 +146,7 @@ let syncing = false, again = false, syncT = null;
 function setSt(v) { st = v; paintSync(); }
 function queueSync(ms = 900) { if (!S.token) return; setSt('pend'); clearTimeout(syncT); syncT = setTimeout(() => sync(), ms); }
 async function sync() {
+  if (RO || EDIT) return false;
   if (!S.token || !apiBase()) return false;
   if (syncing) { again = true; return false; }
   syncing = true;
@@ -159,7 +172,7 @@ function afterRemote() {
   if (view === 'project' && !P()) { go('projects'); return; }
   render();
 }
-function touch() { if (RO) { rev++; return; } S.dirty = true; rev++; remoteSig = JSON.stringify(S.data); save(); queueSync(); }
+function touch() { if (RO) { rev++; return; } if (EDIT) { rev++; edDirty = true; clearTimeout(edT); edT = setTimeout(edPush, 900); paintHeader(); return; } S.dirty = true; rev++; remoteSig = JSON.stringify(S.data); save(); queueSync(); }
 
 /* ---------- Mutaciones ---------- */
 function put(kind, o) { const id = o.id || uid(), e = { c: stamp(), u: now(), del: false, o: 0, ...o, id }; D()[kind][id] = e; return e; }
@@ -255,16 +268,54 @@ const chip = (n, col, cls = '') => `<span class="tg c-${col} ${cls}">${esc(n)}</
 const stateOpts = (pr, sel, edit) => statesOf(pr).map(s => `<option value="${esc(s.id)}"${s.id === sel ? ' selected' : ''}>${esc(s.n)}</option>`).join('') + (edit ? '<option value="__edit">✎ Editar estados…</option>' : '');
 const prioOpts = sel => PRIO_KEYS.map(k => `<option value="${k}"${k === sel ? ' selected' : ''}>${PRIO[k].n}</option>`).join('');
 
+/* ---------- Compartir (datos aparte del proyecto, para que ningún cambio del proyecto los pise) ---------- */
+function shareOf(pr) {
+  const x = D().shares && D().shares[pr];
+  if (x && !x.del) return x;
+  const p = proj(pr) || (D().projects[pr] || {});
+  return { id: pr, pr, sh: p.sh || '', se: '', eds: [], rq: [] };
+}
+function setShare(pr, patch, rqOnly) {
+  const u = now(), cur = D().shares[pr] && !D().shares[pr].del ? D().shares[pr] : { id: pr, pr, sh: proj(pr)?.sh || '', se: '', eds: [], eU: 0, rq: [], rqU: 0, c: stamp(), u, del: false };
+  Object.assign(cur, patch);
+  if (rqOnly) cur.rqU = u; else cur.eU = u;
+  D().shares[pr] = cur; touch(); sync();
+}
+const newTok = () => { const a = new Uint8Array(24); crypto.getRandomValues(a); return Array.from(a, x => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[x % 62]).join(''); };
+const shErr = e => e.net ? 'Sin conexión: probá de nuevo cuando vuelva' : e.status === 404 ? 'Falta actualizar el servidor (ver instrucciones)' : e.message;
+async function shareCreate(kind) {
+  const pr = sheet.id; if (!proj(pr) || sheet.busy) return;
+  const tok = newTok(); sheet.busy = kind; sheet.err = ''; renderSheet();
+  try { await api('/share', { method: 'POST', body: JSON.stringify({ token: tok, kind: kind === 'e' ? 'edit' : 'view' }) }); }
+  catch (e) { sheet.busy = false; sheet.err = shErr(e); renderSheet(); return; }
+  setShare(pr, kind === 'e' ? { se: tok } : { sh: tok });
+  sheet.busy = false; renderSheet(); paintHeader();
+}
+async function addEditor(pr, m) {
+  m = String(m || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)) { sheet.err = 'Ingresá un email válido'; renderSheet(); return; }
+  const x = shareOf(pr);
+  if (x.eds.some(y => y.m === m)) { setShare(pr, { rq: x.rq.filter(r => r.m !== m) }, true); sheet.err = ''; renderSheet(); toast(`${m} ya tenía permiso`); return; }
+  const tok = newTok(); sheet.busy = 'm'; sheet.err = ''; renderSheet();
+  try { await api('/share', { method: 'POST', body: JSON.stringify({ token: tok, kind: 'edit', who: m }) }); }
+  catch (e) { sheet.busy = false; sheet.err = shErr(e); renderSheet(); return; }
+  setShare(pr, { eds: [...x.eds, { m, k: tok }] });
+  if (x.rq.some(r => r.m === m)) setShare(pr, { rq: shareOf(pr).rq.filter(r => r.m !== m) }, true);
+  sheet.busy = false; renderSheet(); paintHeader(); toast(`${m} ya puede editar`);
+}
+function copyText(v) { (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => toast('Link copiado'), () => toast('No se pudo copiar: seleccioná el link y copialo a mano')); }
+
 /* ---------- Encabezado ---------- */
 function paintHeader() {
   const h = $('#hd'); if (!h) return;
   if (view === 'auth') { h.hidden = true; return; }
   h.hidden = false;
   const p = P();
-  if (RO) { h.innerHTML = `<div class="hd-in"><span class="brand"><span class="logo sm">${LOGO}</span><b>Trazo</b></span>${p ? `<span class="crumb" aria-hidden="true">/</span><span class="psw ro"><span class="pn">${nm(p)}</span></span>` : ''}<span class="grow"></span><span class="rob" title="Estás viendo un proyecto compartido. Se actualiza solo.">👁 Solo lectura</span><span class="sy ${roErr ? 'err' : roDirty.size || roBusy ? 'pend' : 'ok'}" role="status">${roErr ? 'Sin conexión' : roDirty.size || roBusy ? 'Guardando…' : roAt ? 'Actualizado ' + hm(roAt) : 'Cargando…'}</span></div>`; return; }
+  if (EDIT) { h.innerHTML = `<div class="hd-in">${S.token ? `<a class="brand" href="./" aria-label="Ir a mis proyectos">` : '<span class="brand">'}<span class="logo sm">${LOGO}</span><b>Trazo</b>${S.token ? '</a>' : '</span>'}${p ? `<span class="crumb" aria-hidden="true">/</span><button class="psw" data-a="pmenu" aria-label="Opciones del proyecto"><span class="pn">${nm(p)}</span>${I_DOWN}</button>` : ''}<span class="grow"></span><span class="rob ed" title="Estás editando un proyecto compartido con vos. Los cambios se guardan solos.">✎ Editando</span><span class="sy ${edErr ? 'err' : edDirty || edBusy ? 'pend' : 'ok'}" role="status">${edErr ? 'Sin conexión' : edDirty || edBusy ? 'Guardando…' : edAt ? 'Guardado ' + hm(edAt) : 'Cargando…'}</span></div>`; return; }
+  if (RO) { h.innerHTML = `<div class="hd-in"><span class="brand"><span class="logo sm">${LOGO}</span><b>Trazo</b></span>${p ? `<span class="crumb" aria-hidden="true">/</span><span class="psw ro"><span class="pn">${nm(p)}</span></span>` : ''}<span class="grow"></span>${p ? '<button class="mini" data-a="rqedit">✎ Pedir permiso de edición</button>' : ''}<span class="rob" title="Estás viendo un proyecto compartido. Se actualiza solo.">👁 Solo lectura</span><span class="sy ${roErr ? 'err' : roDirty.size || roBusy ? 'pend' : 'ok'}" role="status">${roErr ? 'Sin conexión' : roDirty.size || roBusy ? 'Guardando…' : roAt ? 'Actualizado ' + hm(roAt) : 'Cargando…'}</span></div>`; return; }
   h.innerHTML = `<div class="hd-in"><button class="brand" data-a="go" data-v="projects" aria-label="Ir a mis proyectos"><span class="logo sm">${LOGO}</span><b>Trazo</b></button>
 ${view === 'project' && p ? `<span class="crumb" aria-hidden="true">/</span><button class="psw" data-a="pswitch" aria-label="Cambiar de proyecto"><span class="pn">${nm(p)}</span>${I_DOWN}</button>` : ''}
-<span class="grow"></span>${view === 'project' && p ? `<button class="mini shb${p.sh ? ' on' : ''}" data-a="share" aria-label="Compartir proyecto">${I_SHARE}<span>${p.sh ? 'Compartido' : 'Compartir'}</span></button>` : ''}${syncBadge()}<button class="icon" data-a="go" data-v="set" aria-label="Ajustes"${view === 'set' ? ' aria-current="page"' : ''}>${I_GEAR}</button></div>`;
+<span class="grow"></span>${view === 'project' && p ? (() => { const x = shareOf(p.id), on = x.sh || x.se || x.eds.length, rq = x.rq.length; return `<button class="mini shb${on ? ' on' : ''}" data-a="share" aria-label="Compartir proyecto${rq ? ` (${rq} pedidos de edición)` : ''}">${I_SHARE}<span>${on ? 'Compartido' : 'Compartir'}</span>${rq ? `<i class="nb">${rq}</i>` : ''}</button>`; })() : ''}${syncBadge()}<button class="icon" data-a="go" data-v="set" aria-label="Ajustes"${view === 'set' ? ' aria-current="page"' : ''}>${I_GEAR}</button></div>`;
 }
 
 /* ---------- Ingreso ---------- */
@@ -287,18 +338,28 @@ ${CFG.API_URL ? '' : `<label class="f">URL del servidor<input type="url" data-au
 /* ---------- Proyectos ---------- */
 function vProjects() {
   const ps = projects(), name = D().name;
+  if (!ps.length && invites && invites.length) return `<div class="page"><div class="ph"><div><h1>${name ? `Hola ${esc(name)} 👋` : 'Tus proyectos'}</h1><p class="mut">Todavía no tenés proyectos propios.</p></div><button class="btn auto" data-a="newproj">+ Nuevo proyecto</button></div>${sharedWithMe()}</div>`;
   if (!ps.length) return `<div class="page"><div class="empty first"><div class="big" aria-hidden="true">🧭</div><h1>${name ? `Hola ${esc(name)}, ` : ''}empecemos por un proyecto</h1>
 <p class="mut">Un proyecto agrupa iniciativas, estados y equipos. Después lo planificás en el roadmap.</p>
 <div class="erow2"><button class="btn" data-a="newproj">+ Crear mi primer proyecto</button><button class="btn ghost" data-a="sample">Ver un proyecto de ejemplo</button></div></div></div>`;
   return `<div class="page"><div class="ph"><div><h1>${name ? `Hola ${esc(name)} 👋` : 'Tus proyectos'}</h1><p class="mut">Elegí un proyecto o creá uno nuevo.</p></div><button class="btn auto" data-a="newproj">+ Nuevo proyecto</button></div>
-<div class="pgrid">${ps.map(projCard).join('')}</div></div>`;
+<div class="pgrid">${ps.map(projCard).join('')}</div>${sharedWithMe()}</div>`;
+}
+let invites = null;
+async function loadInvites() {
+  if (!S.token || RO || EDIT) return;
+  try { const r = await api('/invites'); invites = r.invites || []; if (view === 'projects' && !sheet) render(); } catch (_) {}
+}
+function sharedWithMe() {
+  if (!invites || !invites.length) return '';
+  return `<h3 class="grp">Compartidos conmigo <span class="cn">${invites.length}</span></h3><div class="pgrid">${invites.map(x => `<a class="pcard shw" href="?ed=${esc(x.k)}"><span class="pe" aria-hidden="true">${esc(x.e || '📁')}</span><b>${esc(x.n)}</b><small>De ${esc(x.owner)} · podés editarlo</small><span class="tg c-teal shtag">✎ Editor</span></a>`).join('')}</div>`;
 }
 function projCard(p) {
   const is = initsOf(p.id), ts = teamsOf(p.id), sts = statesOf(p.id), tot = is.length || 1;
   const done = is.filter(isDone).length;
   const next = is.filter(i => i.dl && i.dl >= today() && !isDone(i)).sort((a, b) => a.dl.localeCompare(b.dl))[0];
   const bars = sts.map(s => { const n = is.filter(i => i.st === s.id).length; return n ? `<i class="c-${s.col}" style="width:${n / tot * 100}%" title="${esc(s.n)}: ${n}"></i>` : ''; }).join('');
-  return `<div class="pcw"><button class="pcard" data-a="openp" data-id="${esc(p.id)}"><span class="pe" aria-hidden="true">${esc(p.e || '📁')}</span><b>${esc(p.n)}</b>${p.sh ? '<span class="tg c-teal shtag">👁 Compartido</span>' : ''}
+  return `<div class="pcw"><button class="pcard" data-a="openp" data-id="${esc(p.id)}"><span class="pe" aria-hidden="true">${esc(p.e || '📁')}</span><b>${esc(p.n)}</b>${(() => { const x = shareOf(p.id); return x.sh || x.se || x.eds.length ? `<span class="tg c-teal shtag">${x.se || x.eds.length ? '✎' : '👁'} Compartido${x.rq.length ? ` · ${x.rq.length} ${x.rq.length === 1 ? 'pedido' : 'pedidos'}` : ''}</span>` : ''; })()}
 <small>${is.length} ${is.length === 1 ? 'iniciativa' : 'iniciativas'} · ${ts.length} ${ts.length === 1 ? 'equipo' : 'equipos'}${is.length ? ` · ${done} ${done === 1 ? 'terminada' : 'terminadas'}` : ''}</small>
 <span class="sbar" aria-hidden="true">${bars}</span>
 <small class="nx">${next ? `Próximo deadline: <b>${esc(dm(next.dl))}</b> · ${esc(next.n)}` : 'Sin deadlines próximos'}</small></button><button class="icon pcm" data-a="pcmenu" data-id="${esc(p.id)}" aria-label="Opciones de ${esc(p.n)}">${I_DOTS}</button></div>`;
@@ -333,7 +394,7 @@ function shellInits(p) {
 function curTeamCell(i, bl, t) {
   const mine = bl.filter(b => b.in === i.id);
   if (!mine.length) return `<button class="lnk" data-a="iplan" data-id="${esc(i.id)}">Planificar</button>`;
-  const lab = (b, cls) => { const x = teamOf(b.tm); return `<span class="ctm ${cls}" title="${esc((x ? x.n : 'Sin equipo') + (b.lb ? ' · ' + b.lb : '') + ': ' + dm(b.s) + ' → ' + dm(b.e))}"><i class="dot c-${x ? x.col : 'gray'}"></i><b>${esc(x ? x.n : 'Sin equipo')}</b>${b.lb ? `<em>${esc(b.lb)}</em>` : ''}</span>`; };
+  const lab = (b, cls) => { const xs = teamsIn(b); return `<span class="ctm ${cls}" title="${esc(teamNames(b) + (b.lb ? ' · ' + b.lb : '') + ': ' + dm(b.s) + ' → ' + dm(b.e))}">${xs.length ? xs.map(x => `<i class="dot c-${x.col}"></i>`).join('') : '<i class="dot c-gray"></i>'}<b>${esc(teamNames(b))}</b>${b.lb ? `<em>${esc(b.lb)}</em>` : ''}</span>`; };
   const now_ = mine.filter(b => b.s <= t && b.e >= t).sort((a, b) => a.e.localeCompare(b.e));
   if (now_.length) return `<span class="ctms">${now_.map(b => lab(b, 'on')).join('')}<small>hasta ${esc(dm(now_[0].e))}</small></span>`;
   const nx = mine.filter(b => b.s > t).sort((a, b) => a.s.localeCompare(b.s))[0];
@@ -391,8 +452,8 @@ function shellPlan(p) {
 function rowsOf(p) {
   const bl = blocksOf(p.id);
   if (p.gb === 't') {
-    const rs = teamsOf(p.id).map(t => ({ key: t.id, kind: 't', t, blocks: bl.filter(b => b.tm === t.id) }));
-    const none = bl.filter(b => !teamOf(b.tm));
+    const rs = teamsOf(p.id).map(t => ({ key: t.id, kind: 't', t, blocks: bl.filter(b => hasTm(b, t.id)) }));
+    const none = bl.filter(b => !teamsIn(b).length);
     if (none.length) rs.push({ key: '', kind: 't', t: null, blocks: none });
     return rs;
   }
@@ -403,13 +464,14 @@ function lanes(blocks) {
   for (const b of s) { let k = ends.findIndex(e => e < b.s); if (k < 0) { k = ends.length; ends.push(b.e); } else ends[k] = b.e; at[b.id] = k; }
   return { at, n: Math.max(1, ends.length) };
 }
-function blockHtml(b, T, lane, p) {
+function blockHtml(b, T, lane, p, rowTm) {
   const s = dn(b.s) - T.d0, e = dn(b.e) - T.d0;
   if (e < 0 || s > T.n - 1) return '';
-  const l = Math.max(0, s), r = Math.min(T.n - 1, e), tm = teamOf(b.tm), it = D().inits[b.in];
-  const txt = p.gb === 't' ? it.n : (tm ? tm.n : 'Sin equipo'), days = e - s + 1;
-  const desc = `${p.gb === 't' ? (tm ? tm.n : 'Sin equipo') : it.n}${b.lb ? ' · ' + b.lb : ''}: ${dm(b.s)} → ${dm(b.e)} (${days} ${days === 1 ? 'día' : 'días'})`;
-  return `<button class="blk c-${tm ? tm.col : 'gray'}${s < 0 ? ' cl' : ''}${e > T.n - 1 ? ' cr' : ''}" data-b="${esc(b.id)}" style="left:${l * T.dw}px;width:${(r - l + 1) * T.dw}px;top:${RP + lane * LH}px" title="${esc(txt + ' — ' + desc)}" aria-label="${esc((p.gb === 't' ? it.n + ' · ' : '') + desc)}. Flechas para mover, Mayús + flechas para cambiar la duración."><i class="hl" aria-hidden="true"></i><span>${esc(txt)}${b.lb ? ` <em>${esc(b.lb)}</em>` : ''}</span><i class="hr" aria-hidden="true"></i></button>`;
+  const l = Math.max(0, s), r = Math.min(T.n - 1, e), xs = teamsIn(b), tm = (rowTm && teamOf(rowTm)) || xs[0], it = D().inits[b.in];
+  const txt = p.gb === 't' ? it.n : teamNames(b), days = e - s + 1;
+  const desc = `${p.gb === 't' ? teamNames(b) : it.n}${b.lb ? ' · ' + b.lb : ''}: ${dm(b.s)} → ${dm(b.e)} (${days} ${days === 1 ? 'día' : 'días'})`;
+  const more = p.gb === 't' ? '' : xs.slice(1).map(x => `<i class="bdot c-${x.col}" aria-hidden="true"></i>`).join('');
+  return `<button class="blk c-${tm ? tm.col : 'gray'}${s < 0 ? ' cl' : ''}${e > T.n - 1 ? ' cr' : ''}" data-b="${esc(b.id)}" style="left:${l * T.dw}px;width:${(r - l + 1) * T.dw}px;top:${RP + lane * LH}px" title="${esc(txt + ' — ' + desc)}" aria-label="${esc((p.gb === 't' ? it.n + ' · ' : '') + desc)}. Flechas para mover, Mayús + flechas para cambiar la duración."><i class="hl" aria-hidden="true"></i>${more}<span>${esc(txt)}${b.lb ? ` <em>${esc(b.lb)}</em>` : ''}</span><i class="hr" aria-hidden="true"></i></button>`;
 }
 /* Carriles de avisos: si el texto va al costado de la barra, ese espacio también cuenta para no pisar al siguiente */
 const alertOut = (a, T) => { const l = Math.max(0, dn(a.s) - T.d0), r = Math.min(T.n - 1, dn(a.e) - T.d0); return (r - l + 1) * T.dw < a.t.length * 7.2 + 34; };
@@ -452,7 +514,7 @@ ${td >= 0 && td < T.n ? `<i class="tdh" style="left:${td * T.dw + T.dw / 2}px">H
     }
     const dl = r.kind === 'i' && r.i.dl ? dn(r.i.dl) - T.d0 : -1;
     const dlm = dl >= 0 && dl < T.n ? `<i class="dlm${isDone(r.i) ? ' ok' : ''}" style="left:${dl * T.dw + T.dw / 2}px" title="Deadline: ${esc(dm(r.i.dl))}"></i>` : '';
-    return `<div class="rr" data-row="${esc(r.key)}" data-k="${r.kind}"${r.kind === 'i' ? ` data-rid="${esc(r.key)}"` : ''}><div class="rl">${r.kind === 'i' ? grip(r.i) : ''}${lab}</div><div class="rt" style="width:${W}px;min-height:${h}px">${dlm}${r.blocks.map(b => blockHtml(b, T, at[b.id], p)).join('')}</div></div>`;
+    return `<div class="rr" data-row="${esc(r.key)}" data-k="${r.kind}"${r.kind === 'i' ? ` data-rid="${esc(r.key)}"` : ''}><div class="rl">${r.kind === 'i' ? grip(r.i) : ''}${lab}</div><div class="rt" style="width:${W}px;min-height:${h}px">${dlm}${r.blocks.map(b => blockHtml(b, T, at[b.id], p, r.kind === 't' && r.t ? r.t.id : '')).join('')}</div></div>`;
   }).join('');
   const als = alertsOf(p.id), al = alertLanes(als, T), ah = al.n * LH + RP + 1;
   const alertRow = `<div class="rr rra" data-row="" data-k="n"><div class="rl"><div class="rlb al"><span class="rn">⚑ A tener en cuenta</span><small>${RO ? 'Vacaciones, feriados, etc.' : '<button class="lnk" data-a="alnew">+ Agregar aviso</button>'}</small></div></div><div class="rt" style="width:${W}px;min-height:${ah}px">${als.map(a => alertHtml(a, T, al.at[a.id])).join('')}</div></div>`;
@@ -462,7 +524,7 @@ ${td >= 0 && td < T.n ? `<i class="tdh" style="left:${td * T.dw + T.dw / 2}px">H
 /* --- Equipos --- */
 function tagEditor(kind, pr) {
   const items = kind === 'states' ? statesOf(pr) : teamsOf(pr);
-  const used = id => kind === 'states' ? initsOf(pr).filter(i => i.st === id).length : blocksOf(pr).filter(b => b.tm === id).length;
+  const used = id => kind === 'states' ? initsOf(pr).filter(i => i.st === id).length : blocksOf(pr).filter(b => hasTm(b, id)).length;
   const unit = kind === 'states' ? ['iniciativa', 'iniciativas'] : ['plazo', 'plazos'];
   return `<div class="tge">${items.map((x, k) => { const u = used(x.id); return `<div class="tgr"><button class="sw c-${x.col}" data-a="pickcol" data-k="${kind}" data-id="${esc(x.id)}" aria-label="Color de ${esc(x.n)}: ${COLN[x.col]}"></button>
 <input class="in sm tgn" type="text" maxlength="40" value="${esc(x.n)}" data-ch="tgn" data-k="${kind}" data-id="${esc(x.id)}" aria-label="Nombre">
@@ -516,7 +578,7 @@ function spReport(p, sp) {
   /* equipos: días planificados dentro del sprint contra días disponibles × capacidad */
   const bl = blocksOf(p.id).filter(b => sp.ins.includes(b.in) && b.s <= sp.e && b.e >= sp.s);
   const teams = teamsOf(p.id).map(x => {
-    const mine = bl.filter(b => b.tm === x.id), days = mine.reduce((a, b) => a + workDays(b.s > sp.s ? b.s : sp.s, b.e < sp.e ? b.e : sp.e), 0);
+    const mine = bl.filter(b => hasTm(b, x.id)), days = mine.reduce((a, b) => a + workDays(b.s > sp.s ? b.s : sp.s, b.e < sp.e ? b.e : sp.e), 0);
     const capD = av * capOf(x), pc = capD ? Math.round(days / capD * 100) : 0;
     return { x, n: new Set(mine.map(b => b.in)).size, days, capD, pc };
   }).filter(r => r.n);
@@ -539,7 +601,7 @@ ${tile(late.length, 'Atrasadas', late.length ? 'Deadline vencido sin terminar' :
 ${(() => { const as = alertsOf(p.id).filter(a => a.s <= sp.e && a.e >= sp.s); return as.length ? `<section class="card"><h2>⚑ A tener en cuenta en este sprint</h2><div class="alls">${as.map(a => `<div class="alli"><span class="aldot al-${a.lv}"></span><b>${esc(a.t)}</b><span class="mut small">${esc(dm(a.s))} → ${esc(dm(a.e))}</span></div>`).join('')}</div></section>` : ''; })()}
 <section class="card"><h2>Carga de equipos en el sprint</h2><p class="mut small">Días hábiles planificados en el roadmap dentro del sprint, contra días disponibles × capacidad.</p>${teams.length ? `<div class="hb">${teams.map(r => `<div class="hbr wide" title="${esc(r.x.n)}: ${r.days} días planificados de ${r.capD} disponibles (${av} días × capacidad ${capOf(r.x)})"><span><i class="dot c-${r.x.col}"></i>${esc(r.x.n)} <small class="mut">· ${r.n} inic.</small></span><span class="hbt"><i class="${r.pc > 100 ? 'lt' : 'pl'}" style="width:${Math.min(100, r.pc)}%"></i></span><b class="${r.pc > 100 ? 'late' : ''}">${r.pc > 100 ? ICO_WARN : ''}${r.days}/${r.capD} días</b></div>`).join('')}</div>` : '<p class="mut small">Las iniciativas del sprint todavía no tienen plazos en el roadmap dentro de estas fechas.</p>'}
 ${noPlan.length ? `<p class="small warnt" style="margin-top:12px">${ICO_WARN} ${noPlan.length} ${noPlan.length === 1 ? 'iniciativa abierta no tiene' : 'iniciativas abiertas no tienen'} plazos dentro del sprint: ${noPlan.map(i => esc(i.n)).join(', ')}.</p>` : ''}</section>
-<section class="card"><h2>Iniciativas del sprint <span class="cn">${total}</span></h2>${total ? `<div class="rtbl">${rows.map(i => { const s = stateOf(i.st), lt = !isDone(i) && i.dl && i.dl < t; const tms = [...new Set(bl.filter(b => b.in === i.id).map(b => b.tm))].map(teamOf).filter(Boolean); return `<div class="rtr${isDone(i) ? ' done' : ''}"><button class="itn" data-a="iopen" data-id="${esc(i.id)}"><span>${esc(i.n)}</span></button>
+<section class="card"><h2>Iniciativas del sprint <span class="cn">${total}</span></h2>${total ? `<div class="rtbl">${rows.map(i => { const s = stateOf(i.st), lt = !isDone(i) && i.dl && i.dl < t; const tms = [...new Set(bl.filter(b => b.in === i.id).flatMap(tmsOf))].map(teamOf).filter(Boolean); return `<div class="rtr${isDone(i) ? ' done' : ''}"><button class="itn" data-a="iopen" data-id="${esc(i.id)}"><span>${esc(i.n)}</span></button>
 <select class="tgs c-${s ? s.col : 'gray'}" data-ch="st" data-id="${esc(i.id)}" aria-label="Estado de ${esc(i.n)}">${s ? '' : '<option value="" selected>Sin estado</option>'}${stateOpts(p.id, i.st)}</select>
 <span class="small">${i.p ? `<span class="pt-${i.p}">${PRIO[i.p].n}</span>` : '<span class="mut">—</span>'}</span>
 <span class="small ${lt ? 'late' : 'mut'}">${i.dl ? (lt ? ICO_WARN + ' ' : '') + esc(dm(i.dl)) : 'Sin deadline'}</span>
@@ -604,7 +666,7 @@ ${pv ? `<small class="prev"><b>Daily anterior (${esc(dm(prev.d))}):</b> ${esc(pv
 const capOf = t => t.cap || 2;
 const WEEKS = [4, 8, 12];
 /* Iniciativas distintas que un equipo tiene en una semana (lunes a domingo) */
-function weekLoad(bl, tm, ws) { const we = addD(ws, 6), set = new Set(); for (const b of bl) if (b.tm === tm && b.s <= we && b.e >= ws) set.add(b.in); return set; }
+function weekLoad(bl, tm, ws) { const we = addD(ws, 6), set = new Set(); for (const b of bl) if (hasTm(b, tm) && b.s <= we && b.e >= ws) set.add(b.in); return set; }
 const ICO_WARN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17h.01"/></svg>';
 const ICO_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>';
 const ICO_CLOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
@@ -662,7 +724,7 @@ ${list('Sin planificar', unpl, i => row(i, `<span class="lnk" data-a="iplan" dat
 function bodyTeams(p) {
   const ts = teamsOf(p.id), bl = blocksOf(p.id), t = today();
   const load = ts.map(x => {
-    const mine = bl.filter(b => b.tm === x.id), cur = mine.filter(b => b.s <= t && b.e >= t), nxt = mine.filter(b => b.s > t).sort((a, b) => a.s.localeCompare(b.s))[0];
+    const mine = bl.filter(b => hasTm(b, x.id)), cur = mine.filter(b => b.s <= t && b.e >= t), nxt = mine.filter(b => b.s > t).sort((a, b) => a.s.localeCompare(b.s))[0];
     return `<div class="ld"><b><i class="dot c-${x.col}"></i>${esc(x.n)}</b><small>${cur.length ? `Ahora: ${cur.map(b => esc(D().inits[b.in].n)).join(', ')}` : 'Sin plazos en curso'}</small><small>${nxt ? `Próximo: ${esc(D().inits[nxt.in].n)} · ${esc(dm(nxt.s))}` : ''}</small></div>`;
   }).join('');
   return `<div class="twocol"><section class="card"><h2>Equipos y personas</h2><p class="mut small">Cada plazo del roadmap se asigna a un equipo o persona. El color es el de sus barras.</p>${tagEditor('teams', p.id)}</section>
@@ -670,8 +732,10 @@ function bodyTeams(p) {
 }
 
 /* ---------- Ajustes ---------- */
+let prevView = 'projects';
 function vSet() {
-  return `<div class="page narrow"><div class="ph"><h1>Ajustes</h1></div>
+  const back = prevView === 'project' && P() ? `Volver a ${esc(P().n)}` : 'Volver a mis proyectos';
+  return `<div class="page narrow"><button class="back" data-a="back" aria-label="${back}"><span aria-hidden="true">‹</span> ${back}</button><div class="ph"><h1>Ajustes</h1></div>
 <section class="card"><h2>Cuenta</h2>
 <div class="set-row"><span class="mut">Sesión</span><span>${esc(S.email)}</span></div>
 <div class="set-row"><span class="mut">Cómo te llamamos</span><span>${esc(D().name || '—')}</span></div>
@@ -709,7 +773,7 @@ function render() {
   document.body.classList.toggle('rmfull', full);
   $('#v').className = 'v-' + view;
   paintHeader(); paint(); renderSheet();
-  if (!RO && view !== 'auth' && !L.onb && onb < 0) onb = 0;
+  if (!RO && !EDIT && view !== 'auth' && !L.onb && onb < 0) onb = 0;
   paintOnb(); lockRO();
 }
 /* En solo lectura quedan activos solo los controles de vista (orden, meses visibles); el resto se deshabilita. */
@@ -807,7 +871,7 @@ function initSheet() {
 <label class="f">Enlace <span class="mut small">(Jira, Confluence, Figma…)</span><input id="iln" type="url" maxlength="500" value="${esc(x.ln)}" placeholder="https://" autocapitalize="none" spellcheck="false"></label>
 ${x.ln && /^https?:\/\//i.test(x.ln) ? `<a class="lnk ext" href="${esc(x.ln)}" target="_blank" rel="noopener noreferrer">${I_LINK} Abrir enlace</a>` : ''}
 <label class="f">Notas<textarea id="ino" maxlength="2000" rows="3" placeholder="Contexto, alcance, dependencias…">${esc(x.no)}</textarea></label>
-${isNew ? '' : `<div class="lab">Plazos por equipo</div><div class="bls">${bl.map(b => { const t = teamOf(b.tm); return `<button type="button" class="blr" data-a="bopen" data-id="${esc(b.id)}">${chip(t ? t.n : 'Sin equipo', t ? t.col : 'gray')}${b.lb ? `<em>${esc(b.lb)}</em>` : ''}<span class="mut">${esc(dm(b.s))} → ${esc(dm(b.e))}</span></button>`; }).join('') || '<p class="mut small">Todavía no tiene plazos.</p>'}<button type="button" class="lnk" data-a="badd">+ Agregar plazo</button></div>`}
+${isNew ? '' : `<div class="lab">Plazos por equipo</div><div class="bls">${bl.map(b => { const xs = teamsIn(b); return `<button type="button" class="blr" data-a="bopen" data-id="${esc(b.id)}">${xs.length ? xs.map(t => chip(t.n, t.col)).join('') : chip('Sin equipo', 'gray')}${b.lb ? `<em>${esc(b.lb)}</em>` : ''}<span class="mut">${esc(dm(b.s))} → ${esc(dm(b.e))}</span></button>`; }).join('') || '<p class="mut small">Todavía no tiene plazos.</p>'}<button type="button" class="lnk" data-a="badd">+ Agregar plazo</button></div>`}
 ${isNew ? '' : (() => { const sps = sprintsOf(p.id).filter(y => y.ins.includes(x.id)); return sps.length ? `<div class="lab">Sprints</div><div class="chips">${sps.map(y => chip(y.n, SPST[spSt(y)][1])).join('')}</div>` : ''; })()}
 <p class="err" role="alert">${esc(sheet.err || '')}</p>
 <button class="btn" type="submit">${isNew ? 'Crear iniciativa' : 'Guardar'}</button>
@@ -818,7 +882,7 @@ function blockSheet() {
   const it = D().inits[x.in];
   return `<form id="sf" novalidate class="sh" data-f="block" role="dialog" aria-modal="true" aria-label="${isNew ? 'Nuevo plazo' : 'Plazo'}"><h2>${isNew ? 'Nuevo plazo' : 'Plazo'}</h2>
 ${sheet.fixIn && it ? `<p class="mut">${esc(it.n)}</p>` : `<label class="f">Iniciativa<select id="bin">${x.in ? '' : '<option value="" selected>Elegí una iniciativa…</option>'}${is.map(i => `<option value="${esc(i.id)}"${i.id === x.in ? ' selected' : ''}>${esc(i.n)}</option>`).join('')}</select></label>`}
-<div class="lab">Equipo o persona</div><div class="chips wrapc" role="group" aria-label="Equipo o persona">${ts.map(t => `<button type="button" class="chip tc c-${t.col}" data-a="bteam" data-id="${esc(t.id)}" aria-pressed="${x.tm === t.id}">${esc(t.n)}</button>`).join('')}
+<div class="lab">Equipos o personas <span class="mut">· podés elegir varios</span></div><div class="chips wrapc" role="group" aria-label="Equipos o personas">${ts.map(t => `<button type="button" class="chip tc c-${t.col}" data-a="bteam" data-id="${esc(t.id)}" aria-pressed="${x.tms.includes(t.id)}">${esc(t.n)}</button>`).join('')}
 ${sheet.newTeam ? `<span class="ntm"><input id="bnt" class="in sm" type="text" maxlength="40" placeholder="Nombre del equipo o persona" aria-label="Nuevo equipo o persona"><button type="button" class="mini" data-a="bteamadd">Agregar</button></span>` : `<button type="button" class="chip add" data-a="bteamnew">+ ${ts.length ? 'Otro' : 'Nuevo equipo o persona'}</button>`}</div>
 <label class="f">Etiqueta <span class="mut small">(opcional: Refinamiento, Desarrollo, QA…)</span><input id="blb" type="text" maxlength="30" value="${esc(x.lb)}" autocomplete="off"></label>
 <div class="two"><label class="f">Desde<input id="bs" type="date" value="${esc(x.s)}" required></label><label class="f">Hasta<input id="be" type="date" value="${esc(x.e)}" required></label></div>
@@ -847,33 +911,42 @@ function sheetHtml() {
 ${open.length && nx ? `<label class="ckl"><input type="checkbox" id="spmv" checked> Pasar las ${open.length} sin terminar a <b>${esc(nx.n)}</b></label>` : open.length ? `<p class="small mut">${open.length} sin terminar. Si creás el próximo sprint, podés sumarlas desde ahí.</p>` : ''}
 <button class="btn" data-a="spcloseok" data-id="${esc(sp.id)}" data-nx="${nx ? esc(nx.id) : ''}">Cerrar sprint</button><button class="btn ghost" data-a="close">Cancelar</button></div>`; }
     case 'share': { const pp = proj(s.id); if (!pp) return '';
-      const link = pp.sh ? location.origin + location.pathname + '?ver=' + pp.sh : '';
-      return `<div class="sh" role="dialog" aria-modal="true" aria-label="Compartir proyecto"><h2>Compartir «${esc(pp.n)}»</h2>
-${link ? `<p class="mut">Cualquiera con este link ve el proyecto completo (iniciativas, roadmap, sprints, equipos y tablero), <b>sin cuenta y sin poder editar</b>. Se actualiza solo con tus cambios.</p>
-<div class="lkrow"><input id="shl" class="in" type="text" readonly value="${esc(link)}" aria-label="Link para compartir"><button class="btn auto" data-a="shcopy">Copiar</button></div>
-<a class="lnk ext" href="${esc(link)}" target="_blank" rel="noopener">Abrir como lo ven los demás ↗</a>
+      const x = shareOf(pp.id), base = location.origin + location.pathname;
+      const row = (id, link) => `<div class="lkrow"><input id="${id}" class="in" type="text" readonly value="${esc(link)}" aria-label="Link"><button class="btn auto" data-a="shcopy" data-t="${id}">Copiar</button></div>`;
+      const vl = x.sh ? base + '?ver=' + x.sh : '', el = x.se ? base + '?ed=' + x.se : '';
+      return `<div class="sh wide" role="dialog" aria-modal="true" aria-label="Compartir proyecto"><h2>Compartir «${esc(pp.n)}»</h2>
+${x.rq.length ? `<section class="shs rqs"><h3>Pedidos de permiso de edición <span class="cn">${x.rq.length}</span></h3>${x.rq.map(r => `<div class="rqi"><div><b>${esc(r.n || r.m)}</b>${r.n ? `<small>${esc(r.m)}</small>` : ''}</div><button class="mini" data-a="rqno" data-m="${esc(r.m)}">Rechazar</button><button class="btn auto sm" data-a="rqok" data-m="${esc(r.m)}">Dar permiso</button></div>`).join('')}</section>` : ''}
+<section class="shs"><h3>👁 Link de visualización</h3><p class="mut small">Quien lo abra ve todo el proyecto sin cuenta y sin poder editarlo (solo puede completar dailies). Se actualiza solo con tus cambios. No vence: funciona hasta que dejes de compartirlo.</p>
+${vl ? `${row('shl', vl)}<div class="shf"><a class="lnk ext" href="${esc(vl)}" target="_blank" rel="noopener">Abrir como lo ven los demás ↗</a><button class="lnk dng" data-a="shoff">Dejar de compartir</button></div>` : `<button class="btn auto" data-a="shon"${s.busy === 'v' ? ' disabled' : ''}>${s.busy === 'v' ? 'Creando…' : 'Crear link de visualización'}</button>`}</section>
+<section class="shs"><h3>✎ Link de edición</h3><p class="mut small">Quien lo abra puede <b>editar todo el proyecto sin cuenta</b> (no puede borrarlo ni cambiar cómo se comparte). Pasalo solo a personas de confianza.</p>
+${el ? `${row('sel', el)}<div class="shf"><span></span><button class="lnk dng" data-a="seoff">Desactivar link de edición</button></div>` : `<button class="btn ghost auto" data-a="seon"${s.busy === 'e' ? ' disabled' : ''}>${s.busy === 'e' ? 'Creando…' : 'Crear link de edición'}</button>`}</section>
+<section class="shs"><h3>Personas con permiso de edición</h3><p class="mut small">Entran con su cuenta de Trazo (con ese email) y ven el proyecto en «Compartidos conmigo». Si todavía no tienen cuenta, la crean con ese email.</p>
+${x.eds.map(y => `<div class="edi"><span>${esc(y.m)}</span><button class="lnk" data-a="shcopyv" data-v="${esc(base + '?ed=' + y.k)}">Copiar su link</button><button class="lnk dng" data-a="edrm" data-m="${esc(y.m)}">Quitar</button></div>`).join('')}
+<form id="edf" class="lkrow" novalidate autocomplete="off"><input id="edm" class="in" type="email" placeholder="email@empresa.com" aria-label="Email de la persona" autocapitalize="none" spellcheck="false"><button class="btn auto" type="submit"${s.busy === 'm' ? ' disabled' : ''}>${s.busy === 'm' ? 'Dando permiso…' : 'Dar permiso'}</button></form></section>
 <p class="err" role="alert">${esc(s.err || '')}</p>
-<button class="btn danger" data-a="shoff">Dejar de compartir</button>` : `<p class="mut">Creá un link de <b>solo lectura</b>: quien lo abra ve todo el proyecto (iniciativas, roadmap, sprints, equipos y tablero) sin necesidad de cuenta, y no puede editar nada. Se va actualizando con tus cambios.</p>
-<p class="err" role="alert">${esc(s.err || '')}</p>
-<button class="btn" data-a="shon"${s.busy ? ' disabled' : ''}>${s.busy ? 'Creando…' : 'Crear link para compartir'}</button>`}
 <button class="btn ghost" data-a="close">Cerrar</button></div>`; }
+    case 'rq': return `<form id="sf" novalidate class="sh" data-f="rq" role="dialog" aria-modal="true" aria-label="Pedir permiso de edición"><h2>Pedir permiso de edición</h2>
+${s.done ? `<p>Listo, le avisamos a quien comparte el proyecto.</p><p class="mut small">Cuando te dé permiso, entrá a Trazo con <b>${esc(s.m)}</b> (o creá una cuenta con ese email) y lo vas a ver en «Compartidos conmigo».</p><button class="btn" type="button" data-a="close">Entendido</button>` : `<p class="mut small">Quien comparte el proyecto va a ver tu pedido. Si te da permiso, entrás con tu cuenta de Trazo con este email.</p>
+<label class="f">Tu email<input id="rqm" type="email" value="${esc(s.m || '')}" autocapitalize="none" spellcheck="false" autocomplete="email"></label>
+<label class="f">Tu nombre <span class="mut small">(opcional)</span><input id="rqn" type="text" maxlength="60" value="${esc(s.n || '')}" autocomplete="name"></label>
+<p class="err" role="alert">${esc(s.err || '')}</p><button class="btn" type="submit"${s.busy ? ' disabled' : ''}>${s.busy ? 'Enviando…' : 'Enviar pedido'}</button><button class="btn ghost" type="button" data-a="close">Cancelar</button>`}</form>`;
     case 'name': return `<form id="sf" novalidate class="sh" data-f="name" role="dialog" aria-modal="true" aria-label="Tu nombre"><h2>¿Cómo te llamamos?</h2><input id="sn" class="in" type="text" maxlength="30" value="${esc(D().name || '')}" placeholder="Tu nombre o apodo" autocomplete="off" autocapitalize="words" aria-label="Tu nombre"><button class="btn" type="submit" style="margin-top:14px">Guardar</button><button class="btn ghost" type="button" data-a="close">Cancelar</button></form>`;
   }
   return '';
 }
 function renderSheet() {
-  const root = $('#ov-root'), keep = root.querySelector('.sh')?.scrollTop || 0;
-  root.innerHTML = '';
+  const root = $('#ov-root'), keep = root.querySelector('.sh')?.scrollTop || 0, same = sheet && root.dataset.t === sheet.t && root.children.length;
+  root.innerHTML = ''; root.dataset.t = sheet ? sheet.t : '';
   if (!sheet) return;
   const o = document.createElement('div');
-  o.className = 'ov'; o.innerHTML = sheetHtml();
+  o.className = 'ov' + (same ? ' still' : ''); o.innerHTML = sheetHtml();      // si es la misma ventana que se actualiza, sin animación
   const d = o.firstElementChild;
   if (!d) { sheet = null; return; }
   const t0 = now();     // en pantallas táctiles, el mismo toque que abrió la ventana no la cierra
   o.addEventListener('mousedown', e => { if (e.target === o && now() - t0 > 450) closeSheet(); });
   root.append(o);
   d.scrollTop = keep;
-  if (RO) {
+  if (RO && sheet.t !== 'rq') {
     d.querySelectorAll('input,select,textarea').forEach(x => { x.disabled = true; });
     d.querySelectorAll('button[type=submit],.btn.danger,[data-a=alv]:not([aria-pressed=true]),[data-a=badd],[data-a=bteamnew],[data-a=bteamadd],[data-a=bteam],[data-a=pickcol],[data-a=tgmv],[data-a=tgdel],.tga').forEach(x => { x.hidden = true; });
     const c = d.querySelector('[data-a=close]'); if (c) c.textContent = 'Cerrar';
@@ -908,9 +981,9 @@ function openInit(id) {
 const DEF_LEN = { d: 5, w: 7, q: 14, m: 30 };
 function openNewBlock(o, back) {
   const p = P(); if (!p) return;
-  const lt = teamOf(L.lastTeam[p.id]) ? L.lastTeam[p.id] : (teamsOf(p.id)[0]?.id || '');
+  const lt = teamsOf(p.id).length === 1 ? teamsOf(p.id)[0].id : '';      // con varios equipos no se preselecciona ninguno
   const s = o.s || today(), e = o.e || addD(s, (DEF_LEN[p.g] || 7) - 1);
-  openSheet({ t: 'block', fixIn: !!o.fixIn, back, draft: { id: '', in: o.in || '', tm: o.tm !== undefined ? o.tm : lt, lb: '', s, e } });
+  openSheet({ t: 'block', fixIn: !!o.fixIn, back, draft: { id: '', in: o.in || '', tms: o.tm !== undefined ? (o.tm ? [o.tm] : []) : (lt ? [lt] : []), lb: '', s, e } });
 }
 function openNewAlert(s, e) {
   const p = P(); if (!p) return;
@@ -931,7 +1004,7 @@ function alertSheet() {
 }
 function openBlock(id, back) {
   const b = D().blocks[id]; if (!b || b.del) return;
-  openSheet({ t: 'block', back, draft: { id: b.id, in: b.in, tm: b.tm, lb: b.lb, s: b.s, e: b.e } });
+  openSheet({ t: 'block', back, draft: { id: b.id, in: b.in, tms: [...tmsOf(b)], lb: b.lb, s: b.s, e: b.e } });
 }
 
 /* ---------- Envíos de formularios ---------- */
@@ -944,6 +1017,16 @@ function submitSheet() {
     if (s.t === 'newproj') { const p = newProject(n, e); touch(); sheet = null; openProject(p.id); toast('Proyecto creado. Empezá cargando iniciativas ✍️'); return; }
     const p = P(); if (p) { upd('projects', p.id, { n: n.slice(0, 80), e: firstEmoji(e) }); touch(); }
     sheet = null; render(); return;
+  }
+  if (f === 'rq') {
+    const m = ($('#rqm').value || '').trim().toLowerCase(), n = ($('#rqn').value || '').trim();
+    s.m = m; s.n = n;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)) { s.err = 'Ingresá un email válido'; s.focus = '#rqm'; renderSheet(); return; }
+    s.busy = true; s.err = ''; renderSheet();
+    fetch(apiBase() + '/public/' + RO_TOKEN + '/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ m, n }) })
+      .then(async r => { const b = await r.json().catch(() => null); if (!r.ok) throw new Error((b && b.error) || 'No se pudo enviar el pedido'); s.busy = false; s.done = true; renderSheet(); })
+      .catch(e => { s.busy = false; s.err = e.message === 'Failed to fetch' ? 'Sin conexión: probá de nuevo' : e.message; renderSheet(); });
+    return;
   }
   if (f === 'alert') {
     readAlert(); const x = s.draft; x.t = x.t.trim();
@@ -979,9 +1062,10 @@ function submitSheet() {
     if (!x.in || !D().inits[x.in]) { s.err = 'Elegí una iniciativa'; renderSheet(); return; }
     if (!x.s || !x.e) { s.err = 'Completá las dos fechas'; renderSheet(); return; }
     if (x.e < x.s) [x.s, x.e] = [x.e, x.s];
-    if (x.id) upd('blocks', x.id, { in: x.in, tm: x.tm, lb: x.lb.trim(), s: x.s, e: x.e });
-    else put('blocks', { pr: curP, in: x.in, tm: x.tm, lb: x.lb.trim(), s: x.s, e: x.e });
-    if (x.tm) { L.lastTeam[curP] = x.tm; saveL(); }
+    const tms = x.tms.filter(id => teamOf(id));
+    if (x.id) upd('blocks', x.id, { in: x.in, tm: tms[0] || '', tms, lb: x.lb.trim(), s: x.s, e: x.e });
+    else put('blocks', { pr: curP, in: x.in, tm: tms[0] || '', tms, lb: x.lb.trim(), s: x.s, e: x.e });
+    if (tms[0]) { L.lastTeam[curP] = tms[0]; saveL(); }
     touch();
     if (s.back && s.back.t === 'init') { sheet = s.back; renderSheet(); paint(); return; }
     sheet = null; render(); return;
@@ -992,7 +1076,7 @@ function addTeamFromSheet() {
   if (!n) { inp?.focus(); return; }
   readBlock();
   const t = addTag('teams', curP, n); touch();
-  sheet.draft.tm = t.id; sheet.newTeam = false; renderSheet();
+  if (!sheet.draft.tms.includes(t.id)) sheet.draft.tms.push(t.id); sheet.newTeam = false; renderSheet();
 }
 
 /* ---------- Roadmap: arrastrar ---------- */
@@ -1105,11 +1189,14 @@ async function doAuth() {
     if (S.email && S.email !== em) { S.data = emptyState(); S.dirty = false; }
     S.email = em; S.token = r.token; authPass = ''; save();
     if (authMode === 'signup') { S.dirty = true; const n = authName.trim().slice(0, 30); if (n) { D().name = n; D().nameU = now(); } save(); L.onb = 0; onb = -1; saveL(); }
-    await sync(); busy = false; startView(); return;
+    await sync(); busy = false;
+    if (L.next) { const k = L.next; delete L.next; saveL(); location.href = location.pathname + '?ed=' + k; return; }
+    startView(); return;
   } catch (e) { authErr = e.message; }
   busy = false; render();
 }
 function startView() {
+  loadInvites();
   const last = D().last;
   if (last && proj(last)) { curP = last; go('project'); } else go('projects');
 }
@@ -1134,7 +1221,7 @@ function exportData() {
     avisos: alertsOf(p.id).map(a => ({ texto: a.t, desde: a.s, hasta: a.e, visibilidad: ALV[a.lv][1] })),
     dailies: dailiesOf(p.id).map(x => ({ fecha: x.d, avisos: x.notes, iniciativas: Object.entries(x.items).map(([id, it]) => ({ iniciativa: D().inits[id]?.n || '', estado: stateOf(it.st)?.n || '', comentario: it.c })) })),
     iniciativas: sortedInits(p).map(i => ({ nombre: i.n, deadline: i.dl, estado: stateOf(i.st)?.n || '', prioridad: PRIO[i.p].n, enlace: i.ln, notas: i.no,
-      plazos: blocksOf(p.id).filter(b => b.in === i.id).map(b => ({ equipo: teamOf(b.tm)?.n || '', etiqueta: b.lb, desde: b.s, hasta: b.e })) }))
+      plazos: blocksOf(p.id).filter(b => b.in === i.id).map(b => ({ equipo: teamNames(b), etiqueta: b.lb, desde: b.s, hasta: b.e })) }))
   })) };
   download(`trazo-${today()}.json`, JSON.stringify(out, null, 2), 'application/json');
 }
@@ -1143,14 +1230,15 @@ function exportCsv() {
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const rows = [['Iniciativa', 'Deadline', 'Estado', 'Prioridad', 'Enlace', 'Notas', 'Plazos por equipo']];
   sortedInits(p).forEach(i => rows.push([i.n, i.dl, stateOf(i.st)?.n || '', i.p ? PRIO[i.p].n : '', i.ln, i.no,
-    blocksOf(p.id).filter(b => b.in === i.id).sort((a, b) => a.s.localeCompare(b.s)).map(b => `${teamOf(b.tm)?.n || 'Sin equipo'}${b.lb ? ' (' + b.lb + ')' : ''}: ${b.s} a ${b.e}`).join(' | ')]));
+    blocksOf(p.id).filter(b => b.in === i.id).sort((a, b) => a.s.localeCompare(b.s)).map(b => `${teamNames(b)}${b.lb ? ' (' + b.lb + ')' : ''}: ${b.s} a ${b.e}`).join(' | ')]));
   download(`${p.n.replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'proyecto'}-${today()}.csv`, '﻿' + rows.map(r => r.map(q).join(';')).join('\r\n'), 'text/csv');
 }
 
 /* ---------- Acciones (clics) ---------- */
 const A = {
   am(b) { authMode = b.dataset.m; authErr = ''; render(); },
-  go(b) { go(b.dataset.v); },
+  go(b) { if (b.dataset.v === 'set' && view !== 'set') prevView = view; if (b.dataset.v === 'projects') loadInvites(); go(b.dataset.v); },
+  back() { go(prevView === 'project' && P() ? 'project' : 'projects'); },
   newproj() { openSheet({ t: 'newproj' }); },
   sample() { const p = sampleProject(); L.tab[p.id] = 'plan'; saveL(); openProject(p.id); toast('Proyecto de ejemplo creado. Probá arrastrar los plazos.'); },
   openp(b) { sheet = null; openProject(b.dataset.id); },
@@ -1183,7 +1271,7 @@ const A = {
   },
   badd() { readInit(); const back = sheet; openNewBlock({ in: back.draft.id, fixIn: true }, back); },
   bopen(b) { readInit(); openBlock(b.dataset.id, sheet); },
-  bteam(b) { readBlock(); sheet.draft.tm = sheet.draft.tm === b.dataset.id ? '' : b.dataset.id; renderSheet(); },
+  bteam(b) { readBlock(); const t = sheet.draft.tms, id = b.dataset.id; sheet.draft.tms = t.includes(id) ? t.filter(x => x !== id) : [...t, id]; renderSheet(); },
   bteamnew() { readBlock(); sheet.newTeam = true; sheet.focus = '#bnt'; renderSheet(); },
   bteamadd() { addTeamFromSheet(); },
   bdel() {
@@ -1213,9 +1301,9 @@ const A = {
         e.del = true; e.u = u; touch(); sheet = sheet.back; renderSheet(); render();
       });
     } else {
-      const n = blocksOf(e.pr).filter(x => x.tm === e.id).length;
-      ask(`¿Eliminar «${e.n}»?`, n ? `Sus ${n} ${n === 1 ? 'plazo queda' : 'plazos quedan'} como «Sin equipo».` : '', 'Sí, eliminar', () => {
-        const u = now(); blocksOf(e.pr).filter(x => x.tm === e.id).forEach(x => { x.tm = ''; x.u = u; });
+      const n = blocksOf(e.pr).filter(x => hasTm(x, e.id)).length;
+      ask(`¿Eliminar «${e.n}»?`, n ? `Se quita de ${n} ${n === 1 ? 'plazo' : 'plazos'} (los que no tengan a nadie más quedan «Sin equipo»).` : '', 'Sí, eliminar', () => {
+        const u = now(); blocksOf(e.pr).filter(x => hasTm(x, e.id)).forEach(x => { x.tms = tmsOf(x).filter(t => t !== e.id); x.tm = x.tms[0] || ''; x.u = u; });
         e.del = true; e.u = u; touch(); sheet = sheet.back; renderSheet(); render();
       });
     }
@@ -1234,24 +1322,33 @@ const A = {
   },
   spreopen(b) { upd('sprints', b.dataset.id, { cl: false, dn: [] }); touch(); render(); },
   share() { if (P()) openSheet({ t: 'share', id: curP }); },
-  async shon() {
-    const p = proj(sheet.id); if (!p || sheet.busy) return;
-    const a = new Uint8Array(24); crypto.getRandomValues(a);
-    const tok = Array.from(a, x => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[x % 62]).join('');
-    sheet.busy = true; sheet.err = ''; renderSheet();
-    try { await api('/share', { method: 'POST', body: JSON.stringify({ token: tok }) }); }
-    catch (e) { sheet.busy = false; sheet.err = e.net ? 'Sin conexión: probá de nuevo cuando vuelva' : e.status === 404 ? 'Falta actualizar el servidor (ver instrucciones)' : e.message; renderSheet(); return; }
-    upd('projects', p.id, { sh: tok }); touch(); sync();
-    sheet.busy = false; renderSheet(); paintHeader();
-  },
-  shcopy() { const i = $('#shl'); if (!i) return; i.select(); (navigator.clipboard ? navigator.clipboard.writeText(i.value) : Promise.reject()).then(() => toast('Link copiado'), () => { try { document.execCommand('copy'); toast('Link copiado'); } catch (_) {} }); },
+  shon() { shareCreate('v'); },
+  seon() { shareCreate('e'); },
+  shcopy(b) { copyText(($('#' + b.dataset.t) || {}).value || ''); },
+  shcopyv(b) { copyText(b.dataset.v); },
   shoff() {
-    const p = proj(sheet.id); if (!p) return; const tok = p.sh;
-    ask('¿Dejar de compartir?', 'El link deja de funcionar para todos. Si lo volvés a compartir se crea uno nuevo.', 'Sí, dejar de compartir', () => {
-      upd('projects', p.id, { sh: '' }); touch(); sync(); api('/share/' + tok, { method: 'DELETE' }).catch(() => {});
-      sheet = { t: 'share', id: p.id }; renderSheet(); paintHeader(); toast('El link ya no funciona');
+    const pr = sheet.id, x = shareOf(pr), tok = x.sh;
+    ask('¿Dejar de compartir el link de visualización?', 'Deja de funcionar para todos. Si lo volvés a compartir se crea uno nuevo.', 'Sí, dejar de compartir', () => {
+      setShare(pr, { sh: '' }); if (proj(pr)?.sh) { upd('projects', pr, { sh: '' }); touch(); }
+      api('/share/' + tok, { method: 'DELETE' }).catch(() => {});
+      sheet = { t: 'share', id: pr }; renderSheet(); paintHeader(); toast('El link de visualización ya no funciona');
     });
   },
+  seoff() {
+    const pr = sheet.id, tok = shareOf(pr).se;
+    ask('¿Desactivar el link de edición?', 'Quien lo tenga ya no va a poder editar. Las personas invitadas por email no se ven afectadas.', 'Sí, desactivar', () => {
+      setShare(pr, { se: '' }); api('/share/' + tok, { method: 'DELETE' }).catch(() => {});
+      sheet = { t: 'share', id: pr }; renderSheet(); toast('El link de edición ya no funciona');
+    });
+  },
+  edrm(b) {
+    const pr = sheet.id, x = shareOf(pr), y = x.eds.find(z => z.m === b.dataset.m); if (!y) return;
+    setShare(pr, { eds: x.eds.filter(z => z.m !== y.m) }); api('/share/' + y.k, { method: 'DELETE' }).catch(() => {});
+    renderSheet(); toast(`${y.m} ya no puede editar`);
+  },
+  rqok(b) { addEditor(sheet.id, b.dataset.m); },
+  rqno(b) { const pr = sheet.id, x = shareOf(pr); setShare(pr, { rq: x.rq.filter(r => r.m !== b.dataset.m) }, true); renderSheet(); paintHeader(); },
+  rqedit() { let m = ''; try { m = JSON.parse(localStorage.getItem(KEY) || '{}').email || ''; } catch (_) {} openSheet({ t: 'rq', m, focus: '#rqm' }); },
   dnew() {
     const p = P(); if (!p || dDraft(p.id)) return;
     setDraft(p.id, { id: '', d: today(), notes: '', items: snapItems(p.id, today(), {}) });
@@ -1417,13 +1514,16 @@ document.addEventListener('keydown', e => {
   $(`.grip[data-g="${CSS.escape(g.dataset.g)}"]`)?.focus();
 });
 function refreshTags() { if (sheet && sheet.t === 'states') renderSheet(); else render(); }
-const RO_OK = new Set(['dnew', 'dedit', 'dsave', 'dcancel', 'yes', 'ptab', 'flt', 'gran', 'gb', 'rmnav', 'rmtoday', 'full', 'dwn', 'dwnav', 'iopen', 'bopen', 'spedit', 'close', 'theme']);
+/* Quien edita por link o invitación no puede borrar el proyecto, cambiar cómo se comparte ni salir a otras pantallas */
+const EDIT_NO = new Set(['pdel', 'share', 'shon', 'seon', 'shoff', 'seoff', 'edrm', 'rqok', 'rqno', 'go', 'back', 'pswitch', 'pcmenu', 'pcshare', 'newproj', 'sample', 'openp', 'editname', 'logout', 'delacc', 'export', 'onbshow', 'install', 'syncnow']);
+const RO_OK = new Set(['rqedit', 'dnew', 'dedit', 'dsave', 'dcancel', 'yes', 'ptab', 'flt', 'gran', 'gb', 'rmnav', 'rmtoday', 'full', 'dwn', 'dwnav', 'iopen', 'bopen', 'spedit', 'close', 'theme']);
 document.addEventListener('click', e => {
   const blk = e.target.closest('.blk');
   if (blk && e.detail === 0) { blk.dataset.kind === 'alerts' ? openAlert(blk.dataset.b) : openBlock(blk.dataset.b); return; }     // Enter o espacio sobre un plazo
   const b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
   if (tabSuppress) { tabSuppress = false; if (b.dataset.a === 'ptab') { e.preventDefault(); return; } }
   if (RO && !RO_OK.has(b.dataset.a)) { e.preventDefault(); return; }
+  if (EDIT && EDIT_NO.has(b.dataset.a)) { e.preventDefault(); return; }
   const f = A[b.dataset.a]; if (f) { e.preventDefault(); f(b); }
 });
 document.addEventListener('submit', e => {
@@ -1431,6 +1531,7 @@ document.addEventListener('submit', e => {
   const f = e.target;
   if (f.id === 'af') { doAuth(); return; }
   if (f.id === 'sf') { submitSheet(); return; }
+  if (f.id === 'edf') { addEditor(sheet.id, ($('#edm') || {}).value); return; }
   if (f.id === 'addi') {
     const n = $('#ain').value.trim(); if (!n) { $('#ain').focus(); return; }
     const p = P();
@@ -1525,7 +1626,14 @@ async function roFetch() {
   try {
     const r = await fetch(apiBase() + '/public/' + RO_TOKEN, { cache: 'no-store' });
     const b = await r.json().catch(() => null);
-    if (!r.ok) { roGone = (b && b.error) || 'Este link ya no está disponible'; roErr = ''; renderGone(); return; }
+    if (!r.ok) {
+      /* Un 404 suelto (por ejemplo, justo después de crear el link) no lo da por perdido: sigue intentando */
+      roMiss++; roErr = '';
+      if (r.status === 404 && (!roAt || roMiss >= 2)) { roGone = (b && b.error) || 'Este link ya no está disponible'; renderGone(); }
+      else paintHeader();
+      return;
+    }
+    roMiss = 0;
     const mine = Object.fromEntries([...roDirty].map(id => [id, S.data.dailies[id]]).filter(x => x[1]));
     S.data = mergeState(sanitizeState(b.data), { dailies: mine }); curP = b.pr; roAt = Date.now(); roErr = ''; roGone = '';
     const p = P(); if (p) Object.assign(p, roKeep);
@@ -1537,21 +1645,67 @@ function renderGone() {
   view = 'project'; S.data = emptyState(); curP = '';
   $('#hd').hidden = true; sheet = null; renderSheet();
   $('#v').className = 'v-gone';
-  $('#v').innerHTML = `<div class="page"><div class="empty first"><div class="big" aria-hidden="true">🔒</div><h1>${esc(roGone)}</h1><p class="mut">Puede que quien lo compartió haya dejado de compartirlo. Pedile un link nuevo.</p></div></div>`;
+  $('#v').innerHTML = `<div class="page"><div class="empty first"><div class="big" aria-hidden="true">🔒</div><h1>${esc(roGone)}</h1><p class="mut">Puede que quien lo compartió haya dejado de compartirlo. Si se vuelve a habilitar, esta página se actualiza sola.</p></div></div>`;
 }
 if (RO) {
   if (CFG.API_URL) { /* el link usa el servidor de la app */ }
   roFetch().then(hideSplash);
-  setInterval(() => { if (document.visibilityState === 'visible' && !roGone) roFetch(); }, 30000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !roGone) roFetch(); });
+  setInterval(() => { if (document.visibilityState === 'visible') roFetch(); }, roGone ? 60000 : 30000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') roFetch(); });
+}
+
+/* Modo editor: trae el proyecto, guarda cada cambio y lo vuelve a pedir cada 20 segundos */
+let edAt = 0, edErr = '', edT = null, edBusy = false, edDirty = false;
+async function edFetch() {
+  if (edDirty || edBusy) return;
+  try {
+    const r = await api('/edit/' + EDIT_TOKEN);
+    S.data = mergeState(S.data, r.data); curP = r.pr; edAt = Date.now(); edErr = ''; view = 'project';
+    if (!P()) { edGoneScreen('Este proyecto ya no está disponible'); return; }
+    if (sheet || dragging || document.activeElement?.matches('input,select,textarea')) paintHeader(); else render();
+  } catch (e) { edFail(e); }
+}
+async function edPush() {
+  if (edBusy) { clearTimeout(edT); edT = setTimeout(edPush, 400); return; }
+  edBusy = true; const r0 = rev;
+  try {
+    const r = await api('/edit/' + EDIT_TOKEN, { method: 'PUT', body: JSON.stringify({ data: S.data }) });
+    S.data = mergeState(S.data, r.data || {}); if (rev === r0) edDirty = false; edErr = ''; edAt = Date.now();
+  } catch (e) { edFail(e); if (e.net) { clearTimeout(edT); edT = setTimeout(edPush, 5000); } }
+  finally { edBusy = false; paintHeader(); if (edDirty && !edErr) { clearTimeout(edT); edT = setTimeout(edPush, 300); } }
+}
+function edFail(e) {
+  if (e.net) { edErr = 'net'; paintHeader(); return; }
+  if (e.status === 404) { edGoneScreen(e.message); return; }
+  if (e.status === 401 || e.status === 403) {
+    const who = (e.message.match(/para (\S+@\S+)/) || [])[1] || '';
+    edGoneScreen(e.status === 401 ? 'Para editar este proyecto, ingresá con tu cuenta' : 'Este acceso es para otra cuenta',
+      e.status === 401 ? `Este acceso es para <b>${esc(who)}</b>. Ingresá (o creá una cuenta) con ese email y volvés acá.` : `Estás con <b>${esc(S.email)}</b> y este acceso es para <b>${esc(who)}</b>. Cerrá sesión en Trazo e ingresá con esa cuenta.`,
+      true);
+    return;
+  }
+  edErr = 'err'; paintHeader();
+}
+function edGoneScreen(title, sub, login) {
+  sheet = null; renderSheet(); $('#hd').hidden = true; $('#v').className = 'v-gone';
+  $('#v').innerHTML = `<div class="page"><div class="empty first"><div class="big" aria-hidden="true">🔒</div><h1>${esc(title)}</h1><p class="mut">${sub || 'Puede que quien lo compartió haya quitado el acceso. Pedile un link nuevo.'}</p>${login ? '<div class="erow2"><button class="btn auto" data-a="edlogin">Ir a ingresar</button></div>' : ''}</div></div>`;
+  hideSplash();
+}
+A.edlogin = () => { L.next = EDIT_TOKEN; saveL(); location.href = location.pathname; };
+EDIT_NO.delete('edlogin');
+if (EDIT) {
+  edFetch().then(hideSplash);
+  setInterval(() => { if (document.visibilityState === 'visible') edFetch(); }, 20000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') edFetch(); else if (edDirty) edPush(); });
+  window.addEventListener('pagehide', () => { if (edDirty) fetch(apiBase() + '/edit/' + EDIT_TOKEN, { method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json', ...(S.token ? { Authorization: 'Bearer ' + S.token } : {}) }, body: JSON.stringify({ data: S.data }) }).catch(() => {}); });
 }
 
 remoteSig = JSON.stringify(S.data);
-if (RO) { /* arranca en roFetch */ }
+if (RO || EDIT) { /* arrancan en roFetch / edFetch */ }
 else if (S.token) {
   if (!navigator.onLine) st = 'off';
   startView();
   sync();
 } else render();
-if (!RO) hideSplash();
+if (!RO && !EDIT) hideSplash();
 })();

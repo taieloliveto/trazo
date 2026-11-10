@@ -3,5 +3,5 @@
 set -e
 cd "$(dirname "$0")/.."
 cp shared/merge.js web/merge.js
-{ cat shared/merge.js; printf '\nexport { mergeState, sanitizeState, emptyState, norm, firstEmoji, isEmoji, COLORS, PRIOS, GRANS, shOk };\n'; } > server/src/merge.js
+{ cat shared/merge.js; printf '\nexport { mergeState, sanitizeState, emptyState, norm, firstEmoji, isEmoji, COLORS, PRIOS, GRANS, shOk, emailOk };\n'; } > server/src/merge.js
 echo "merge.js sincronizado en web/ y server/src/"
