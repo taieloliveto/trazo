@@ -166,6 +166,25 @@ await step('ordenar iniciativas arrastrando (listado)', async () => {
   await page.keyboard.press('ArrowDown');
   assert.equal(await page.inputValue('select[data-ch=sort]'), 'manual');
 });
+await step('columnas a elección y en el orden elegido; ocultar finalizadas', async () => {
+  const heads = async () => page.locator('.ith [role=columnheader]').allTextContents();
+  assert.deepEqual(await heads(), ['Iniciativa', 'Deadline', 'Estado', 'Prioridad', 'Equipo actual']);
+  await page.click('[data-a=cols]');
+  await page.check('.colr:has-text("Sprint") input'); await page.check('.colr:has-text("Notas") input');
+  await page.uncheck('.colr:has-text("Prioridad") input');
+  await page.click('[data-a=colmv][data-k=st][data-v="-1"]');
+  await page.click('.sh [data-a=close]');
+  assert.deepEqual(await heads(), ['Iniciativa', 'Estado', 'Deadline', 'Equipo actual', 'Sprint', 'Notas']);
+  assert.deepEqual(live((await data(page)).projects)[0].cols, ['st', 'dl', 'tm', 'sp', 'no']);
+  await page.screenshot({ path: join(SHOTS, '05c-columnas.png') });
+  await page.click('[data-a=cols]'); await page.click('[data-a=colreset]'); await page.click('.sh [data-a=close]');
+  assert.deepEqual(await heads(), ['Iniciativa', 'Deadline', 'Estado', 'Prioridad', 'Equipo actual']);
+  const n = await page.locator('.itr').count();
+  await page.click('[data-a=hidedone]');
+  assert.equal(await page.locator('.itr').count(), n - 1, 'se oculta la finalizada');
+  await page.click('[data-a=hidedone]');
+  assert.equal(await page.locator('.itr').count(), n);
+});
 await step('editar una iniciativa con enlace y notas', async () => {
   await page.click('.itn:has-text("QR y derivación autoinstalable")');
   await page.fill('#iln', 'no-es-url');
@@ -245,8 +264,8 @@ await step('roadmap: más plazos desde la ficha de la iniciativa', async () => {
   const tops = await page.locator('.blk').evaluateAll(els => els.map(e => e.style.top));
   assert.notEqual(tops[0], tops[1]);
   // otro plazo en otra iniciativa, creado por clic (sin arrastrar)
-  const b = await rowBox('Campaña post-mudanza');
-  await page.mouse.click(b.x + 20 * 20 + 3, b.y + b.height / 2);
+  const b = await rowBox('Campaña post-mudanza'), rmb = await page.locator('#rm').boundingBox();
+  await page.mouse.click(rmb.x + rmb.width - 60, b.y + b.height / 2);      // zona vacía visible de la fila
   await page.waitForSelector('.sh[data-f=block]');
   await page.click('.sh .chip.tc:has-text("CUX / Data")');
   await page.click('#sf button[type=submit]');

@@ -1,5 +1,5 @@
 'use strict';
-/* Trazo — planificación de proyectos (PWA). Usa merge.js (globales: mergeState, sanitizeState, emptyState, firstEmoji, isEmoji, COLORS). */
+/* Sprinty — planificación de proyectos (PWA). Usa merge.js (globales: mergeState, sanitizeState, emptyState, firstEmoji, isEmoji, COLORS). */
 (() => {
 const VERSION = '1.0.0';
 const CFG = window.TRAZO_CONFIG || {};
@@ -311,9 +311,9 @@ function paintHeader() {
   if (view === 'auth') { h.hidden = true; return; }
   h.hidden = false;
   const p = P();
-  if (EDIT) { h.innerHTML = `<div class="hd-in">${S.token ? `<a class="brand" href="./" aria-label="Ir a mis proyectos">` : '<span class="brand">'}<span class="logo sm">${LOGO}</span><b>Trazo</b>${S.token ? '</a>' : '</span>'}${p ? `<span class="crumb" aria-hidden="true">/</span><button class="psw" data-a="pmenu" aria-label="Opciones del proyecto"><span class="pn">${nm(p)}</span>${I_DOWN}</button>` : ''}<span class="grow"></span><span class="rob ed" title="Estás editando un proyecto compartido con vos. Los cambios se guardan solos.">✎ Editando</span><span class="sy ${edErr ? 'err' : edDirty || edBusy ? 'pend' : 'ok'}" role="status">${edErr ? 'Sin conexión' : edDirty || edBusy ? 'Guardando…' : edAt ? 'Guardado ' + hm(edAt) : 'Cargando…'}</span></div>`; return; }
-  if (RO) { h.innerHTML = `<div class="hd-in"><span class="brand"><span class="logo sm">${LOGO}</span><b>Trazo</b></span>${p ? `<span class="crumb" aria-hidden="true">/</span><span class="psw ro"><span class="pn">${nm(p)}</span></span>` : ''}<span class="grow"></span>${p ? '<button class="mini" data-a="rqedit">✎ Pedir permiso de edición</button>' : ''}<span class="rob" title="Estás viendo un proyecto compartido. Se actualiza solo.">👁 Solo lectura</span><span class="sy ${roErr ? 'err' : roDirty.size || roBusy ? 'pend' : 'ok'}" role="status">${roErr ? 'Sin conexión' : roDirty.size || roBusy ? 'Guardando…' : roAt ? 'Actualizado ' + hm(roAt) : 'Cargando…'}</span></div>`; return; }
-  h.innerHTML = `<div class="hd-in"><button class="brand" data-a="go" data-v="projects" aria-label="Ir a mis proyectos"><span class="logo sm">${LOGO}</span><b>Trazo</b></button>
+  if (EDIT) { h.innerHTML = `<div class="hd-in">${S.token ? `<a class="brand" href="./" aria-label="Ir a mis proyectos">` : '<span class="brand">'}<span class="logo sm">${LOGO}</span><b>Sprinty</b>${S.token ? '</a>' : '</span>'}${p ? `<span class="crumb" aria-hidden="true">/</span><button class="psw" data-a="pmenu" aria-label="Opciones del proyecto"><span class="pn">${nm(p)}</span>${I_DOWN}</button>` : ''}<span class="grow"></span><span class="rob ed" title="Estás editando un proyecto compartido con vos. Los cambios se guardan solos.">✎ Editando</span><span class="sy ${edErr ? 'err' : edDirty || edBusy ? 'pend' : 'ok'}" role="status">${edErr ? 'Sin conexión' : edDirty || edBusy ? 'Guardando…' : edAt ? 'Guardado ' + hm(edAt) : 'Cargando…'}</span></div>`; return; }
+  if (RO) { h.innerHTML = `<div class="hd-in"><span class="brand"><span class="logo sm">${LOGO}</span><b>Sprinty</b></span>${p ? `<span class="crumb" aria-hidden="true">/</span><span class="psw ro"><span class="pn">${nm(p)}</span></span>` : ''}<span class="grow"></span>${p ? '<button class="mini" data-a="rqedit">✎ Pedir permiso de edición</button>' : ''}<span class="rob" title="Estás viendo un proyecto compartido. Se actualiza solo.">👁 Solo lectura</span><span class="sy ${roErr ? 'err' : roDirty.size || roBusy ? 'pend' : 'ok'}" role="status">${roErr ? 'Sin conexión' : roDirty.size || roBusy ? 'Guardando…' : roAt ? 'Actualizado ' + hm(roAt) : 'Cargando…'}</span></div>`; return; }
+  h.innerHTML = `<div class="hd-in"><button class="brand" data-a="go" data-v="projects" aria-label="Ir a mis proyectos"><span class="logo sm">${LOGO}</span><b>Sprinty</b></button>
 ${view === 'project' && p ? `<span class="crumb" aria-hidden="true">/</span><button class="psw" data-a="pswitch" aria-label="Cambiar de proyecto"><span class="pn">${nm(p)}</span>${I_DOWN}</button>` : ''}
 <span class="grow"></span>${view === 'project' && p ? (() => { const x = shareOf(p.id), on = x.sh || x.se || x.eds.length, rq = x.rq.length; return `<button class="mini shb${on ? ' on' : ''}" data-a="share" aria-label="Compartir proyecto${rq ? ` (${rq} pedidos de edición)` : ''}">${I_SHARE}<span>${on ? 'Compartido' : 'Compartir'}</span>${rq ? `<i class="nb">${rq}</i>` : ''}</button>`; })() : ''}${syncBadge()}<button class="icon" data-a="go" data-v="set" aria-label="Ajustes"${view === 'set' ? ' aria-current="page"' : ''}>${I_GEAR}</button></div>`;
 }
@@ -321,7 +321,7 @@ ${view === 'project' && p ? `<span class="crumb" aria-hidden="true">/</span><but
 /* ---------- Ingreso ---------- */
 function vAuth() {
   const login = authMode === 'login';
-  return `<div class="auth"><div class="ahero"><div class="logo">${LOGO}</div><h1>Trazo</h1>
+  return `<div class="auth"><div class="ahero"><div class="logo">${LOGO}</div><h1>Sprinty</h1>
 <p class="mut">Planificá tus proyectos: iniciativas con estado, prioridad y deadline, y un roadmap por equipo que armás arrastrando.</p>
 <div class="amock" aria-hidden="true"><i class="c-purple" style="left:4%;width:34%"></i><i class="c-blue" style="left:30%;width:28%;top:34px"></i><i class="c-green" style="left:56%;width:22%;top:68px"></i><i class="c-yellow" style="left:70%;width:26%"></i></div></div>
 <div class="acard"><div class="seg" role="group" aria-label="Modo"><button type="button" data-a="am" data-m="login" aria-pressed="${login}">Ingresar</button><button type="button" data-a="am" data-m="signup" aria-pressed="${!login}">Crear cuenta</button></div>
@@ -387,8 +387,9 @@ function shellInits(p) {
 <label class="fl"><span>Prioridad</span><select id="apr" class="in" aria-label="Prioridad">${prioOpts('')}</select></label>
 <button class="btn" type="submit">Agregar</button></form>
 <div class="tbar"><div class="chips" role="group" aria-label="Filtrar por estado"><button class="chip" data-a="flt" data-v="" aria-pressed="${!f}">Todas <span class="cn">${all.length}</span></button>${sts.map(s => { const n = all.filter(i => i.st === s.id).length; return `<button class="chip" data-a="flt" data-v="${esc(s.id)}" aria-pressed="${f === s.id}"><i class="dot c-${s.col}"></i>${esc(s.n)} <span class="cn">${n}</span></button>`; }).join('')}</div>
+<button class="chip tgl" data-a="hidedone" aria-pressed="${hideDone(p)}">${hideDone(p) ? '✓ ' : ''}Ocultar finalizadas</button>
 <span class="grow"></span><label class="sel">Ordenar por <select data-ch="sort" aria-label="Ordenar por">${Object.entries(SORTS).map(([k, n]) => `<option value="${k}"${(L.sort[p.id] || 'manual') === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
-<button class="mini" data-a="states">Editar estados</button></div>`;
+<button class="mini" data-a="cols">Columnas</button><button class="mini" data-a="states">Editar estados</button></div>`;
 }
 /* Equipo que tiene la iniciativa hoy según el roadmap; si hoy no tiene a nadie, el próximo (o el último que la tuvo). */
 function curTeamCell(i, bl, t) {
@@ -402,21 +403,40 @@ function curTeamCell(i, bl, t) {
   const ls = mine.sort((a, b) => b.e.localeCompare(a.e))[0];
   return `<span class="ctms"><small class="pre">Último</small>${lab(ls, 'nx')}<small>terminó ${esc(dm(ls.e))}</small></span>`;
 }
+/* Columnas del listado: se eligen y ordenan por proyecto (la primera, Iniciativa, es fija) */
+const COLS = {
+  dl: { n: 'Deadline', w: '150px' }, st: { n: 'Estado', w: '170px' }, p: { n: 'Prioridad', w: '140px' },
+  tm: { n: 'Equipo actual', w: 'minmax(150px,210px)' }, sp: { n: 'Sprint', w: '120px' }, plan: { n: 'Plan (inicio → fin)', w: '160px' },
+  ln: { n: 'Enlace', w: '96px' }, no: { n: 'Notas', w: 'minmax(160px,280px)' }
+};
+const DEF_COLS = ['dl', 'st', 'p', 'tm'];
+const colsOf = p => (p.cols && p.cols.length ? p.cols : DEF_COLS).filter(k => COLS[k]);
+const hideDone = p => !!(L.hideDone && L.hideDone[p.id]);
+function colCell(k, i, p, bl, t) {
+  const s = stateOf(i.st), late = i.dl && i.dl < t && !isDone(i), soon = i.dl && !late && dn(i.dl) - dn(t) <= 7 && !isDone(i);
+  const c = (cls, html) => `<span role="cell" class="cc ${cls}" data-l="${COLS[k].n}">${html}</span>`;
+  switch (k) {
+    case 'dl': return c('cdl', `<input class="in sm dl${late ? ' late' : soon ? ' soon' : ''}" type="date" value="${esc(i.dl)}" data-ch="dl" data-id="${esc(i.id)}" aria-label="Deadline de ${esc(i.n)}">`);
+    case 'st': return c('', `<select class="tgs c-${s ? s.col : 'gray'}" data-ch="st" data-id="${esc(i.id)}" aria-label="Estado de ${esc(i.n)}">${s ? '' : '<option value="" selected>Sin estado</option>'}${stateOpts(p.id, i.st, true)}</select>`);
+    case 'p': return c('', `<select class="tgs p c-${PRIO[i.p].c}" data-ch="p" data-id="${esc(i.id)}" aria-label="Prioridad de ${esc(i.n)}">${prioOpts(i.p)}</select>`);
+    case 'tm': return c('tms', curTeamCell(i, bl, t));
+    case 'sp': { const y = openSprintsOf(p.id, i.id)[0] || sprintsOf(p.id).filter(x => x.ins.includes(i.id)).pop(); return c('', y ? chip(y.n, SPST[spSt(y)][1]) : '<span class="mut small">—</span>'); }
+    case 'plan': { const mine = bl.filter(b => b.in === i.id); if (!mine.length) return c('', '<span class="mut small">Sin plan</span>'); const a = mine.reduce((m, b) => b.s < m ? b.s : m, mine[0].s), z = mine.reduce((m, b) => b.e > m ? b.e : m, mine[0].e); return c('small', `${esc(dm(a))} → ${esc(dm(z))}`); }
+    case 'ln': return c('', i.ln ? `<a class="lnk" href="${esc(i.ln)}" target="_blank" rel="noopener noreferrer">${I_LINK} Abrir</a>` : '<span class="mut small">—</span>');
+    case 'no': return c('cno', i.no ? `<span title="${esc(i.no)}">${esc(i.no)}</span>` : '<span class="mut small">—</span>');
+  }
+  return '';
+}
 function bodyInits(p) {
-  const f = L.flt[p.id] || '', rows = sortedInits(p).filter(i => !f || i.st === f);
+  const f = L.flt[p.id] || '', hd = hideDone(p), rows = sortedInits(p).filter(i => (!f || i.st === f) && (!hd || !isDone(i)));
   if (!initsOf(p.id).length) return `<div class="empty"><div class="big" aria-hidden="true">📝</div><p><b>Todavía no hay iniciativas.</b></p><p class="mut">Escribí la primera arriba: nombre, deadline, estado y prioridad.</p></div>`;
-  if (!rows.length) return `<div class="empty"><p class="mut">No hay iniciativas con ese estado.</p></div>`;
-  const bl = blocksOf(p.id), t = today();
-  return `<div class="itbl" role="table" aria-label="Iniciativas"><div class="ith" role="row"><span role="columnheader">Iniciativa</span><span role="columnheader">Deadline</span><span role="columnheader">Estado</span><span role="columnheader">Prioridad</span><span role="columnheader">Equipo actual</span><span></span></div>
-${rows.map(i => {
-    const s = stateOf(i.st), late = i.dl && i.dl < t && !isDone(i), soon = i.dl && !late && dn(i.dl) - dn(t) <= 7 && !isDone(i);
-    return `<div class="itr${isDone(i) ? ' done' : ''}" role="row" data-rid="${esc(i.id)}"><div class="itc" role="cell">${grip(i)}<button class="itn" data-a="iopen" data-id="${esc(i.id)}"><span>${esc(i.n)}</span>${i.ln ? `<i class="lk" title="Tiene enlace">${I_LINK}</i>` : ''}${i.no ? '<i class="nt" title="Tiene notas">¶</i>' : ''}</button></div>
-<span role="cell" class="cdl"><input class="in sm dl${late ? ' late' : soon ? ' soon' : ''}" type="date" value="${esc(i.dl)}" data-ch="dl" data-id="${esc(i.id)}" aria-label="Deadline de ${esc(i.n)}"></span>
-<span role="cell"><select class="tgs c-${s ? s.col : 'gray'}" data-ch="st" data-id="${esc(i.id)}" aria-label="Estado de ${esc(i.n)}">${s ? '' : '<option value="" selected>Sin estado</option>'}${stateOpts(p.id, i.st, true)}</select></span>
-<span role="cell"><select class="tgs p c-${PRIO[i.p].c}" data-ch="p" data-id="${esc(i.id)}" aria-label="Prioridad de ${esc(i.n)}">${prioOpts(i.p)}</select></span>
-<span role="cell" class="tms">${curTeamCell(i, bl, t)}</span>
-<span role="cell" class="ce"><button class="icon sm" data-a="iopen" data-id="${esc(i.id)}" aria-label="Editar ${esc(i.n)}">${I_DOTS}</button></span></div>`;
-  }).join('')}</div>`;
+  if (!rows.length) return `<div class="empty"><p class="mut">No hay iniciativas para mostrar con estos filtros.</p></div>`;
+  const bl = blocksOf(p.id), t = today(), cols = colsOf(p);
+  const tpl = `minmax(220px,1fr) ${cols.map(k => COLS[k].w).join(' ')} 44px`;
+  return `<div class="itbl" role="table" aria-label="Iniciativas" style="--cols:${tpl}"><div class="ith" role="row"><span role="columnheader">Iniciativa</span>${cols.map(k => `<span role="columnheader">${COLS[k].n}</span>`).join('')}<span></span></div>
+${rows.map(i => `<div class="itr${isDone(i) ? ' done' : ''}" role="row" data-rid="${esc(i.id)}"><div class="itc" role="cell">${grip(i)}<button class="itn" data-a="iopen" data-id="${esc(i.id)}"><span>${esc(i.n)}</span>${i.ln && !cols.includes('ln') ? `<i class="lk" title="Tiene enlace">${I_LINK}</i>` : ''}${i.no && !cols.includes('no') ? '<i class="nt" title="Tiene notas">¶</i>' : ''}</button></div>
+${cols.map(k => colCell(k, i, p, bl, t)).join('')}
+<span role="cell" class="ce"><button class="icon sm" data-a="iopen" data-id="${esc(i.id)}" aria-label="Editar ${esc(i.n)}">${I_DOTS}</button></span></div>`).join('')}</div>`;
 }
 
 /* --- Roadmap --- */
@@ -447,17 +467,19 @@ function shellPlan(p) {
 <button class="mini full" data-a="full" aria-pressed="${full}">${full ? I_SHRINK + ' Salir de pantalla completa' : I_EXPAND + ' Pantalla completa'}</button>
 <div class="segs" role="group" aria-label="Agrupar por"><button data-a="gb" data-v="i" aria-pressed="${p.gb !== 't'}">Por iniciativa</button><button data-a="gb" data-v="t" aria-pressed="${p.gb === 't'}">Por equipo</button></div></div>
 <div class="legend">${ts.length ? ts.map(t => chip(t.n, t.col)).join('') : '<span class="mut small">Todavía no hay equipos.</span>'}<button class="lnk" data-a="ptab" data-t="teams">${ts.length ? 'Gestionar equipos' : '+ Agregar equipos o personas'}</button>
+<button class="chip tgl" data-a="hidedone" aria-pressed="${hideDone(p)}">${hideDone(p) ? '✓ ' : ''}Ocultar finalizadas</button>
 <span class="grow"></span><span class="hint">Arrastrá sobre una fila para crear un plazo · arrastrá un plazo para moverlo · tirá de sus bordes para cambiar la duración</span></div>`;
 }
 function rowsOf(p) {
   const bl = blocksOf(p.id);
   if (p.gb === 't') {
-    const rs = teamsOf(p.id).map(t => ({ key: t.id, kind: 't', t, blocks: bl.filter(b => hasTm(b, t.id)) }));
-    const none = bl.filter(b => !teamsIn(b).length);
+    const vis = bl.filter(b => !hideDone(p) || !isDone(D().inits[b.in]));
+    const rs = teamsOf(p.id).map(t => ({ key: t.id, kind: 't', t, blocks: vis.filter(b => hasTm(b, t.id)) }));
+    const none = vis.filter(b => !teamsIn(b).length);
     if (none.length) rs.push({ key: '', kind: 't', t: null, blocks: none });
     return rs;
   }
-  return sortedInits(p).map(i => ({ key: i.id, kind: 'i', i, blocks: bl.filter(b => b.in === i.id) }));
+  return sortedInits(p).filter(i => !hideDone(p) || !isDone(i)).map(i => ({ key: i.id, kind: 'i', i, blocks: bl.filter(b => b.in === i.id) }));
 }
 function lanes(blocks) {
   const s = [...blocks].sort((a, b) => a.s.localeCompare(b.s) || a.e.localeCompare(b.e) || a.c - b.c), ends = [], at = {};
@@ -742,9 +764,9 @@ function vSet() {
 <button class="sb" data-a="editname">Cambiar mi nombre</button><button class="sb" data-a="syncnow">Sincronizar ahora</button></section>
 <section class="card"><h2>Apariencia</h2><div class="themesel" role="group" aria-label="Apariencia">${[['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Oscuro']].map(([k, n]) => `<button type="button" data-a="theme" data-v="${k}" aria-pressed="${(L.theme || 'auto') === k}">${n}</button>`).join('')}</div></section>
 <section class="card"><h2>App</h2>${installEvt ? '<button class="sb" data-a="install">Instalar la app</button>' : ''}
-<button class="sb" data-a="onbshow">Ver la introducción de Trazo</button><button class="sb" data-a="export">Exportar todo (JSON)</button></section>
+<button class="sb" data-a="onbshow">Ver la introducción de Sprinty</button><button class="sb" data-a="export">Exportar todo (JSON)</button></section>
 <section class="card"><h2>Sesión</h2><button class="sb" data-a="logout">Cerrar sesión</button><button class="sb dng" data-a="delacc">Eliminar mi cuenta y mis datos</button></section>
-<p class="mut small">Trazo ${VERSION}. Tus datos se guardan en este dispositivo y en la nube; funciona sin conexión y se sincroniza cuando vuelve.</p></div>`;
+<p class="mut small">Sprinty ${VERSION}. Tus datos se guardan en este dispositivo y en la nube; funciona sin conexión y se sincroniza cuando vuelve.</p></div>`;
 }
 
 /* ---------- Navegación y dibujo ---------- */
@@ -775,6 +797,8 @@ function render() {
   paintHeader(); paint(); renderSheet();
   if (!RO && !EDIT && view !== 'auth' && !L.onb && onb < 0) onb = 0;
   paintOnb(); lockRO();
+  const at = document.querySelector('.tabs [aria-selected=true]');      // en el celular, la pestaña activa siempre a la vista
+  if (at && at.parentElement.scrollWidth > at.parentElement.clientWidth) at.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 /* En solo lectura quedan activos solo los controles de vista (orden, meses visibles); el resto se deshabilita. */
 function lockRO() {
@@ -920,16 +944,20 @@ ${x.rq.length ? `<section class="shs rqs"><h3>Pedidos de permiso de edición <sp
 ${vl ? `${row('shl', vl)}<div class="shf"><a class="lnk ext" href="${esc(vl)}" target="_blank" rel="noopener">Abrir como lo ven los demás ↗</a><button class="lnk dng" data-a="shoff">Dejar de compartir</button></div>` : `<button class="btn auto" data-a="shon"${s.busy === 'v' ? ' disabled' : ''}>${s.busy === 'v' ? 'Creando…' : 'Crear link de visualización'}</button>`}</section>
 <section class="shs"><h3>✎ Link de edición</h3><p class="mut small">Quien lo abra puede <b>editar todo el proyecto sin cuenta</b> (no puede borrarlo ni cambiar cómo se comparte). Pasalo solo a personas de confianza.</p>
 ${el ? `${row('sel', el)}<div class="shf"><span></span><button class="lnk dng" data-a="seoff">Desactivar link de edición</button></div>` : `<button class="btn ghost auto" data-a="seon"${s.busy === 'e' ? ' disabled' : ''}>${s.busy === 'e' ? 'Creando…' : 'Crear link de edición'}</button>`}</section>
-<section class="shs"><h3>Personas con permiso de edición</h3><p class="mut small">Entran con su cuenta de Trazo (con ese email) y ven el proyecto en «Compartidos conmigo». Si todavía no tienen cuenta, la crean con ese email.</p>
+<section class="shs"><h3>Personas con permiso de edición</h3><p class="mut small">Entran con su cuenta de Sprinty (con ese email) y ven el proyecto en «Compartidos conmigo». Si todavía no tienen cuenta, la crean con ese email.</p>
 ${x.eds.map(y => `<div class="edi"><span>${esc(y.m)}</span><button class="lnk" data-a="shcopyv" data-v="${esc(base + '?ed=' + y.k)}">Copiar su link</button><button class="lnk dng" data-a="edrm" data-m="${esc(y.m)}">Quitar</button></div>`).join('')}
 <form id="edf" class="lkrow" novalidate autocomplete="off"><input id="edm" class="in" type="email" placeholder="email@empresa.com" aria-label="Email de la persona" autocapitalize="none" spellcheck="false"><button class="btn auto" type="submit"${s.busy === 'm' ? ' disabled' : ''}>${s.busy === 'm' ? 'Dando permiso…' : 'Dar permiso'}</button></form></section>
 <p class="err" role="alert">${esc(s.err || '')}</p>
 <button class="btn ghost" data-a="close">Cerrar</button></div>`; }
     case 'rq': return `<form id="sf" novalidate class="sh" data-f="rq" role="dialog" aria-modal="true" aria-label="Pedir permiso de edición"><h2>Pedir permiso de edición</h2>
-${s.done ? `<p>Listo, le avisamos a quien comparte el proyecto.</p><p class="mut small">Cuando te dé permiso, entrá a Trazo con <b>${esc(s.m)}</b> (o creá una cuenta con ese email) y lo vas a ver en «Compartidos conmigo».</p><button class="btn" type="button" data-a="close">Entendido</button>` : `<p class="mut small">Quien comparte el proyecto va a ver tu pedido. Si te da permiso, entrás con tu cuenta de Trazo con este email.</p>
+${s.done ? `<p>Listo, le avisamos a quien comparte el proyecto.</p><p class="mut small">Cuando te dé permiso, entrá a Sprinty con <b>${esc(s.m)}</b> (o creá una cuenta con ese email) y lo vas a ver en «Compartidos conmigo».</p><button class="btn" type="button" data-a="close">Entendido</button>` : `<p class="mut small">Quien comparte el proyecto va a ver tu pedido. Si te da permiso, entrás con tu cuenta de Sprinty con este email.</p>
 <label class="f">Tu email<input id="rqm" type="email" value="${esc(s.m || '')}" autocapitalize="none" spellcheck="false" autocomplete="email"></label>
 <label class="f">Tu nombre <span class="mut small">(opcional)</span><input id="rqn" type="text" maxlength="60" value="${esc(s.n || '')}" autocomplete="name"></label>
 <p class="err" role="alert">${esc(s.err || '')}</p><button class="btn" type="submit"${s.busy ? ' disabled' : ''}>${s.busy ? 'Enviando…' : 'Enviar pedido'}</button><button class="btn ghost" type="button" data-a="close">Cancelar</button>`}</form>`;
+    case 'cols': { const pp = P(); if (!pp) return ''; const on = colsOf(pp), all = [...on, ...Object.keys(COLS).filter(k => !on.includes(k))];
+      return `<div class="sh" role="dialog" aria-modal="true" aria-label="Columnas"><h2>Columnas del listado</h2><p class="mut small">Elegí qué información ver y en qué orden. «Iniciativa» va siempre primero. Se guarda en el proyecto.</p>
+<div class="colsl">${all.map(k => { const v = on.includes(k), i = on.indexOf(k); return `<div class="colr${v ? '' : ' off'}"><label class="ckl"><input type="checkbox" data-col="${k}"${v ? ' checked' : ''}> ${COLS[k].n}</label>${v ? `<span class="ord"><button class="icon xs" data-a="colmv" data-k="${k}" data-v="-1" aria-label="Subir ${COLS[k].n}"${i ? '' : ' disabled'}>↑</button><button class="icon xs" data-a="colmv" data-k="${k}" data-v="1" aria-label="Bajar ${COLS[k].n}"${i < on.length - 1 ? '' : ' disabled'}>↓</button></span>` : ''}</div>`; }).join('')}</div>
+<button class="btn ghost" data-a="colreset">Volver a las de siempre</button><button class="btn" data-a="close">Listo</button></div>`; }
     case 'name': return `<form id="sf" novalidate class="sh" data-f="name" role="dialog" aria-modal="true" aria-label="Tu nombre"><h2>¿Cómo te llamamos?</h2><input id="sn" class="in" type="text" maxlength="30" value="${esc(D().name || '')}" placeholder="Tu nombre o apodo" autocomplete="off" autocapitalize="words" aria-label="Tu nombre"><button class="btn" type="submit" style="margin-top:14px">Guardar</button><button class="btn ghost" type="button" data-a="close">Cancelar</button></form>`;
   }
   return '';
@@ -1387,6 +1415,10 @@ const A = {
   alnew() { openNewAlert(); },
   alv(b) { readAlert(); sheet.draft.lv = b.dataset.v; renderSheet(); },
   aldel() { const a = D().alerts[sheet.draft.id]; if (!a) return; a.del = true; a.u = now(); touch(); sheet = null; render(); toast('Aviso eliminado', 'Deshacer', () => { a.del = false; a.u = now(); touch(); render(); }); },
+  hidedone() { const p = P(); if (!p) return; L.hideDone = { ...(L.hideDone || {}), [p.id]: !hideDone(p) }; saveL(); render(); },
+  cols() { openSheet({ t: 'cols' }); },
+  colmv(b) { const p = P(), c = [...colsOf(p)], i = c.indexOf(b.dataset.k), j = i + +b.dataset.v; if (i < 0 || j < 0 || j >= c.length) return; [c[i], c[j]] = [c[j], c[i]]; upd('projects', p.id, { cols: c }); touch(); renderSheet(); paint(); },
+  colreset() { const p = P(); upd('projects', p.id, { cols: [] }); touch(); renderSheet(); paint(); },
   editname() { openSheet({ t: 'name' }); },
   syncnow() { if (!S.dirty) S.dirty = true; sync().then(ok => toast(ok ? 'Sincronizado ✓' : 'No se pudo sincronizar')); },
   theme(b) { L.theme = b.dataset.v; saveL(); applyTheme(); render(); },
@@ -1516,7 +1548,7 @@ document.addEventListener('keydown', e => {
 function refreshTags() { if (sheet && sheet.t === 'states') renderSheet(); else render(); }
 /* Quien edita por link o invitación no puede borrar el proyecto, cambiar cómo se comparte ni salir a otras pantallas */
 const EDIT_NO = new Set(['pdel', 'share', 'shon', 'seon', 'shoff', 'seoff', 'edrm', 'rqok', 'rqno', 'go', 'back', 'pswitch', 'pcmenu', 'pcshare', 'newproj', 'sample', 'openp', 'editname', 'logout', 'delacc', 'export', 'onbshow', 'install', 'syncnow']);
-const RO_OK = new Set(['rqedit', 'dnew', 'dedit', 'dsave', 'dcancel', 'yes', 'ptab', 'flt', 'gran', 'gb', 'rmnav', 'rmtoday', 'full', 'dwn', 'dwnav', 'iopen', 'bopen', 'spedit', 'close', 'theme']);
+const RO_OK = new Set(['hidedone', 'rqedit', 'dnew', 'dedit', 'dsave', 'dcancel', 'yes', 'ptab', 'flt', 'gran', 'gb', 'rmnav', 'rmtoday', 'full', 'dwn', 'dwnav', 'iopen', 'bopen', 'spedit', 'close', 'theme']);
 document.addEventListener('click', e => {
   const blk = e.target.closest('.blk');
   if (blk && e.detail === 0) { blk.dataset.kind === 'alerts' ? openAlert(blk.dataset.b) : openBlock(blk.dataset.b); return; }     // Enter o espacio sobre un plazo
@@ -1613,6 +1645,13 @@ document.addEventListener('change', e => {
   } else if (k === 'd' && t.value) { dr.d = t.value; dr.items = snapItems(p.id, dr.d, dr.items); setDraft(p.id, dr); paint(); }
 });
 
+document.addEventListener('change', e => {
+  const k = e.target.dataset && e.target.dataset.col; if (!k || !sheet || sheet.t !== 'cols') return;
+  const p = P(), c = colsOf(p).filter(x => x !== k);
+  if (e.target.checked) c.push(k);
+  upd('projects', p.id, { cols: c.length ? c : ['st'] }); touch(); renderSheet(); paint();
+});
+
 /* ---------- Ciclo de vida ---------- */
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.token) sync(); });
 window.addEventListener('online', () => { if (S.token) sync(); });
@@ -1680,7 +1719,7 @@ function edFail(e) {
   if (e.status === 401 || e.status === 403) {
     const who = (e.message.match(/para (\S+@\S+)/) || [])[1] || '';
     edGoneScreen(e.status === 401 ? 'Para editar este proyecto, ingresá con tu cuenta' : 'Este acceso es para otra cuenta',
-      e.status === 401 ? `Este acceso es para <b>${esc(who)}</b>. Ingresá (o creá una cuenta) con ese email y volvés acá.` : `Estás con <b>${esc(S.email)}</b> y este acceso es para <b>${esc(who)}</b>. Cerrá sesión en Trazo e ingresá con esa cuenta.`,
+      e.status === 401 ? `Este acceso es para <b>${esc(who)}</b>. Ingresá (o creá una cuenta) con ese email y volvés acá.` : `Estás con <b>${esc(S.email)}</b> y este acceso es para <b>${esc(who)}</b>. Cerrá sesión en Sprinty e ingresá con esa cuenta.`,
       true);
     return;
   }

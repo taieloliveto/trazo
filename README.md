@@ -1,6 +1,6 @@
-# Trazo
+# Sprinty
 
-Plataforma para planificar proyectos: cargás iniciativas con deadline, estado y prioridad, y las planificás en un roadmap **por equipo o persona**, arrastrando barras de tiempo. Es una web instalable (PWA) que funciona en la compu y en el celular, con cuenta propia y sincronización.
+Sprinty (antes Trazo): plataforma para planificar proyectos: cargás iniciativas con deadline, estado y prioridad, y las planificás en un roadmap **por equipo o persona**, arrastrando barras de tiempo. Es una web instalable (PWA) que funciona en la compu y en el celular, con cuenta propia y sincronización.
 
 ## Qué incluye (MVP)
 
@@ -37,5 +37,6 @@ Usa **su propio** servidor y KV (`trazo-server`), separado de Foco y Compras.
 ```bash
 npm run sync-shared     # tras editar shared/merge.js
 node scripts/test.mjs   # 11 pruebas: datos y servidor
-node scripts/e2e.mjs    # 23 pasos en un navegador real (capturas en .shots/)
+node scripts/e2e.mjs    # pasos en un navegador real (capturas en .shots/)
+node scripts/mobile.mjs # recorre todas las pantallas a 390 px y avisa si algo se sale del ancho
 ```

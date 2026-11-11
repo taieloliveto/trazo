@@ -9,6 +9,7 @@
                   n nombre · e emoji · g granularidad (m mes | q quincena | w semana | d día)
                   vs primer mes visible 'AAAA-MM' · vn cantidad de meses visibles · gb agrupar por (i iniciativa | t equipo)
                   sh clave del link público de solo lectura ('' = no compartido)
+                  cols columnas visibles del listado de iniciativas, en orden ([] = las de siempre)
      states:   { id: { id, pr, n, col, dn, o, c, u, del } } estados de un proyecto (editables) · dn cuenta como terminado
      teams:    { id: { id, pr, n, col, cap, o, c, u, del } } equipos o personas de un proyecto · cap iniciativas en paralelo (0 = 2 por defecto)
      inits:    { id: { id, pr, n, dl, st, p, ln, no, o, c, u, del } }
@@ -45,6 +46,7 @@ const COLORS = ['gray', 'orange', 'teal', 'purple', 'pink', 'blue', 'yellow', 'g
 const PRIOS = ['urg', 'high', 'mid', 'low', ''];
 const GRANS = ['m', 'q', 'w', 'd'];
 const shOk = s => typeof s === 'string' && /^[A-Za-z0-9]{20,40}$/.test(s);
+const COLKEYS = ['dl', 'st', 'p', 'tm', 'sp', 'plan', 'ln', 'no'];
 const TABKEYS = ['inits', 'plan', 'sprints', 'cur', 'daily', 'teams', 'dash'];
 const ymOk = s => typeof s === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
 const linkOk = s => typeof s === 'string' && /^https?:\/\/\S+$/i.test(s.trim()) ? s.trim().slice(0, 500) : '';
@@ -68,7 +70,7 @@ const col = c => COLORS.includes(c) ? c : 'gray';
 function fixProject(r, id) {
   if (!isObj(r)) return null;
   return { id, n: str(r.n, 80).trim() || 'Proyecto', e: firstEmoji(r.e), g: GRANS.includes(r.g) ? r.g : 'w',
-    vs: ymOk(r.vs) ? r.vs : '', vn: Math.min(24, Math.max(1, Math.round(num(r.vn)) || 6)), gb: r.gb === 't' ? 't' : 'i', sh: shOk(r.sh) ? r.sh : '', o: ordN(r.o), c: num(r.c), u: num(r.u), del: !!r.del };
+    vs: ymOk(r.vs) ? r.vs : '', vn: Math.min(24, Math.max(1, Math.round(num(r.vn)) || 6)), gb: r.gb === 't' ? 't' : 'i', sh: shOk(r.sh) ? r.sh : '', cols: Array.isArray(r.cols) ? [...new Set(r.cols.filter(k => COLKEYS.includes(k)))] : [], o: ordN(r.o), c: num(r.c), u: num(r.u), del: !!r.del };
 }
 function fixTag(r, id) {        // estados y equipos tienen la misma forma
   if (!isObj(r) || !idOk(r.pr)) return null;
