@@ -39,4 +39,5 @@ npm run sync-shared     # tras editar shared/merge.js
 node scripts/test.mjs   # 11 pruebas: datos y servidor
 node scripts/e2e.mjs    # pasos en un navegador real (capturas en .shots/)
 node scripts/mobile.mjs # recorre todas las pantallas a 390 px y avisa si algo se sale del ancho
+node scripts/roadmap-scroll.mjs # «Hoy» y la barra de desplazamiento del roadmap en 3 tamaños de pantalla
 ```

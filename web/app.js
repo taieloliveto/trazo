@@ -580,7 +580,7 @@ function bodyPlan(p) {
   const head = `<div class="rh"><div class="rl rlh">${p.gb === 't' ? 'Equipo / persona' : 'Iniciativa'}</div><div class="rt rth" style="width:${W}px">${spRow}
 <div class="mrow">${months.map(m => `<div class="mc" style="left:${m.st * T.dw}px;width:${m.len * T.dw}px"><span>${cap(MON[+m.ym.slice(5) - 1])} ${m.ym.slice(0, 4)}</span></div>`).join('')}</div>
 ${T.g === 'm' ? '' : `<div class="srow">${segs.map(s => { const lab = T.g === 'q' ? (s.k ? '2ª quincena' : '1ª quincena') : T.g === 'w' ? 'S' + (s.k + 1) : `${DOW1[wday(T.d0 + s.st)]}<b>${s.a}</b>`; const we = T.g === 'd' && [0, 6].includes(wday(T.d0 + s.st)); const isT = td >= s.st && td < s.st + s.len; return `<div class="sc${we ? ' we' : ''}${isT ? ' now' : ''}" style="left:${s.st * T.dw}px;width:${s.len * T.dw}px">${lab}</div>`; }).join('')}</div>`}
-${td >= 0 && td < T.n ? `<i class="tdh" style="left:${td * T.dw + T.dw / 2}px">Hoy</i>` : ''}</div></div>`;
+${T.g === 'm' && td >= 0 && td < T.n ? `<i class="tdh" style="left:${td * T.dw + T.dw / 2}px">Hoy</i>` : ''}</div></div>`;
   let lines = segs.map(s => `<i class="gl${s.first ? ' gm' : ''}" style="left:${s.st * T.dw}px"></i>`).join('');
   lines += sps.filter(x => spSt(x) === 'cur').map(x => { const a = Math.max(0, dn(x.s) - T.d0), z = Math.min(T.n - 1, dn(x.e) - T.d0); return `<i class="spband" style="left:${a * T.dw}px;width:${(z - a + 1) * T.dw}px"></i>`; }).join('');
   if (T.g === 'd') lines += segs.filter(s => [0, 6].includes(wday(T.d0 + s.st))).map(s => `<i class="gwe" style="left:${s.st * T.dw}px;width:${T.dw}px"></i>`).join('');
@@ -845,12 +845,22 @@ function paint() {
   const rm = $('#rm'); if (rm) scrollKeep = { l: rm.scrollLeft, t: rm.scrollTop, p: curP, vs: P()?.vs, g: P()?.g };
   b.innerHTML = bodyHtml();
   const nr = $('#rm');
+  fitRm();
   if (nr) {
     const p = P();
     if (scrollKeep && scrollKeep.p === curP && scrollKeep.vs === p.vs && scrollKeep.g === p.g) { nr.scrollLeft = scrollKeep.l; nr.scrollTop = scrollKeep.t; }
     else { const T = tl(p), td = dn(today()) - T.d0; if (td > 0 && td < T.n) nr.scrollLeft = Math.max(0, td * T.dw - 80); }
   }
 }
+/* El roadmap entra entero en la pantalla, así su barra de desplazamiento horizontal siempre queda a la vista */
+function fitRm() {
+  const rm = $('#rm'); if (!rm) return;
+  if (document.body.classList.contains('rmfull')) { rm.style.maxHeight = ''; return; }
+  const top = rm.getBoundingClientRect().top + window.scrollY, hd = ($('#hd') && !$('#hd').hidden ? $('#hd').offsetHeight : 0);
+  const avail = innerHeight - top - 14;
+  rm.style.maxHeight = Math.round(avail >= 320 ? avail : innerHeight - hd - 24) + 'px';
+}
+window.addEventListener('resize', () => fitRm());
 function render() {
   applySeason();
   const V = { auth: vAuth, projects: vProjects, project: vProject, set: vSet };

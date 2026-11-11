@@ -239,7 +239,7 @@ label.f input,label.f select,label.f textarea{margin-top:6px;font-weight:400}
 .sc.we{background:var(--line2)}
 .sc.now{background:var(--acc-soft);color:var(--acc)}
 .sc.now b{color:var(--acc)}
-.tdh{position:absolute;bottom:-9px;transform:translateX(-50%);font-style:normal;font-size:.68rem;font-weight:800;padding:1px 6px;border-radius:99px;background:var(--acc);color:var(--accf);z-index:2}
+.tdh{position:absolute;bottom:3px;transform:translateX(-50%);font-style:normal;font-size:.68rem;font-weight:800;padding:1px 6px;border-radius:99px;background:var(--acc);color:var(--accf);z-index:2}
 .rb{position:relative}
 .rgl{position:absolute;top:0;bottom:0;left:var(--lw);pointer-events:none;z-index:0}
 .gl{position:absolute;top:0;bottom:0;width:1px;background:var(--line2)}
@@ -824,3 +824,12 @@ a.pcard{text-decoration:none;color:inherit}
 .sgrid small{color:var(--mut);font-size:.74rem}
 .sgrid button[aria-pressed=true]{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc);background:color-mix(in srgb,var(--acc-soft) 50%,var(--card))}
 @media(hover:hover){.sgrid button:hover{border-color:var(--acc)}}
+
+/* Roadmap: «Hoy» queda dentro del encabezado (y debajo de la columna de nombres al desplazar) */
+.rth{overflow:clip}
+/* Barras de desplazamiento siempre visibles en el roadmap y tablas anchas (en Mac se ocultan solas si no) */
+.rm::-webkit-scrollbar,.hmw::-webkit-scrollbar{width:12px;height:12px}
+.rm::-webkit-scrollbar-track,.hmw::-webkit-scrollbar-track{background:var(--line2)}
+.rm::-webkit-scrollbar-thumb,.hmw::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--mut) 55%,var(--line2));border-radius:99px;border:3px solid var(--line2)}
+.rm::-webkit-scrollbar-thumb:hover,.hmw::-webkit-scrollbar-thumb:hover{background:var(--mut)}
+.rm::-webkit-scrollbar-corner{background:var(--line2)}
