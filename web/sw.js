@@ -1,6 +1,6 @@
 /* Service worker de Sprinty: la app abre sin conexión. Siempre intenta primero la red para correr el código más nuevo. */
-const V = 'sprinty-v1';
-const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'merge.js', 'config.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+const V = 'sprinty-v2';
+const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'merge.js', 'seasons.js', 'config.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

@@ -31,7 +31,7 @@ async function check(name, full = true) {
   const o = await page.evaluate(() => {
     const vw = document.documentElement.clientWidth, out = [];
     for (const el of document.querySelectorAll('body *')) {
-      if (el.closest('#rm, .hmw, .tabs, .chips, .rtb, .legend, .spchk, .itbl, .ov .sh, #sp')) continue;
+      if (el.closest('#rm, .hmw, .tabs, .chips, .rtb, .legend, .spchk, .itbl, .ov .sh, #sp, .sfx')) continue;
       const r = el.getBoundingClientRect(); if (!r.width || getComputedStyle(el).visibility === 'hidden') continue;
       if (r.right > vw + 1 || r.left < -1) out.push(`${el.tagName.toLowerCase()}.${String(el.className).split(' ').join('.')} (${Math.round(r.left)}–${Math.round(r.right)})`);
     }

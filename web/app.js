@@ -305,8 +305,69 @@ async function addEditor(pr, m) {
 }
 function copyText(v) { (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => toast('Link copiado'), () => toast('No se pudo copiar: seleccioná el link y copialo a mano')); }
 
+/* ---------- Ambientación del mes (configuración en seasons.js) ---------- */
+const SEAS = window.SPRINTY_SEASONS || {};
+const arMonth = () => { try { return +new Intl.DateTimeFormat('en-US', { timeZone: 'America/Argentina/Buenos_Aires', month: 'numeric' }).format(new Date()); } catch (_) { return new Date().getMonth() + 1; } };
+const autoSeason = () => Object.keys(SEAS).find(k => SEAS[k].mes === arMonth()) || '';
+/* Por defecto, la del mes en Argentina; el dueño de la cuenta puede elegir otra o ninguna en Ajustes */
+const seasonKey = () => { const v = D().season; if (v === 'off') return ''; return SEAS[v] ? v : autoSeason(); };
+const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; } };
+let seasonOn = null;
+function applySeason() {
+  const k = seasonKey(), root = document.documentElement;
+  if (k === seasonOn) return;
+  seasonOn = k;
+  if (!k) { root.removeAttribute('data-season'); for (const v of ['--season-tint', '--season-strip', '--season-strip-h', '--season-icon']) root.style.removeProperty(v); return; }
+  const t = SEAS[k];
+  root.dataset.season = k;
+  root.style.setProperty('--season-tint', t.tinte);
+  root.style.setProperty('--season-strip', t.tira);
+  root.style.setProperty('--season-strip-h', (t.tiraAlto || 3) + 'px');
+  root.style.setProperty('--season-icon', `url("data:image/svg+xml,${encodeURIComponent(t.icono.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '))}")`);
+}
+const seasonDeco = () => { const k = seasonKey(); return k ? `<span class="sdeco" title="Ambientación: ${esc(SEAS[k].nombre)}" aria-hidden="true">${SEAS[k].icono}</span>` : ''; };
+/* Microanimación breve y ocasional (nunca con movimiento reducido) */
+function seasonFx() {
+  const k = seasonKey(); if (!k || reducedMotion() || document.hidden) return;
+  const pt = SEAS[k].particula; if (!pt) return;
+  document.querySelector('.sfx')?.remove();
+  const box = document.createElement('div'); box.className = 'sfx sfx-' + pt.modo; box.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < pt.cantidad; i++) {
+    const e = document.createElement('i'), z = 10 + Math.random() * 12, top = ['brilla', 'vuela'].includes(pt.modo) ? `top:${(4 + Math.random() * 70).toFixed(1)}%;` : '';
+    e.style.cssText = `left:${(Math.random() * 100).toFixed(1)}%;${top}width:${z.toFixed(0)}px;height:${z.toFixed(0)}px;animation-delay:${(Math.random() * 3).toFixed(2)}s;animation-duration:${((pt.rapida ? 2.4 : 6) + Math.random() * 3).toFixed(2)}s;--r:${Math.round(Math.random() * 300 - 150)}deg;--dx:${Math.round(Math.random() * 90 - 45)}px;${pt.colores ? `filter:hue-rotate(${Math.round(Math.random() * 360)}deg);` : ''}`;
+    e.innerHTML = pt.svg; box.append(e);
+  }
+  document.body.append(box); setTimeout(() => box.remove(), 13500);
+}
+/* Bienvenida chiquita la primera vez que se entra en un mes nuevo (no bloquea nada y se va sola) */
+function seasonWelcome() {
+  const k = seasonKey(); if (!k) return;
+  const mk = today().slice(0, 7) + ':' + k;
+  if (L.seasonSeen === mk) return;
+  L.seasonSeen = mk; saveL();
+  const t = SEAS[k], d = document.createElement('div');
+  d.className = 'swel'; d.setAttribute('role', 'status');
+  d.innerHTML = `<span class="swi" aria-hidden="true">${t.icono}</span><div><b>${esc(t.saludo)}</b><small>${esc(t.sub)}</small></div><button class="icon xs" aria-label="Cerrar">×</button>`;
+  d.querySelector('button').onclick = () => d.remove();
+  document.body.append(d);
+  setTimeout(() => d.classList.add('out'), 9000); setTimeout(() => d.remove(), 9700);
+}
+let seasonStarted = false;
+function seasonStart() {
+  applySeason();
+  if (seasonStarted) return; seasonStarted = true;
+  setTimeout(() => { if (onb < 0 && view !== 'auth' && !document.querySelector('.v-gone')) { seasonWelcome(); seasonFx(); } else seasonStarted = false; }, 1500);
+}
+/* Si la app queda abierta cuando empieza otro mes, cambia sola */
+setInterval(() => { if (!D().season) { const k = autoSeason(); if (k !== seasonOn) { applySeason(); paintHeader(); seasonStarted = false; seasonStart(); } } }, 600000);
+
 /* ---------- Encabezado ---------- */
 function paintHeader() {
+  paintHeader0();
+  const h = $('#hd'), b = h && !h.hidden && h.querySelector('.brand');
+  if (b && !h.querySelector('.sdeco')) b.insertAdjacentHTML('afterend', seasonDeco());
+}
+function paintHeader0() {
   const h = $('#hd'); if (!h) return;
   if (view === 'auth') { h.hidden = true; return; }
   h.hidden = false;
@@ -763,6 +824,8 @@ function vSet() {
 <div class="set-row"><span class="mut">Cómo te llamamos</span><span>${esc(D().name || '—')}</span></div>
 <button class="sb" data-a="editname">Cambiar mi nombre</button><button class="sb" data-a="syncnow">Sincronizar ahora</button></section>
 <section class="card"><h2>Apariencia</h2><div class="themesel" role="group" aria-label="Apariencia">${[['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Oscuro']].map(([k, n]) => `<button type="button" data-a="theme" data-v="${k}" aria-pressed="${(L.theme || 'auto') === k}">${n}</button>`).join('')}</div></section>
+<section class="card"><h2>Ambientación</h2><p class="mut small">Pequeños detalles según la época del año: una ilustración en el encabezado, un tono suave de fondo y alguna animación breve. Por defecto cambia sola cada mes.</p>
+<div class="sgrid" role="group" aria-label="Ambientación">${(() => { const a = autoSeason(), cur = D().season || ''; return `<button type="button" data-a="season" data-v="" aria-pressed="${cur === ''}"><span class="si">${a ? SEAS[a].icono : ''}</span><b>Automática</b><small>Este mes: ${a ? esc(SEAS[a].nombre) : '—'}</small></button>${Object.entries(SEAS).sort((x, y) => x[1].mes - y[1].mes).map(([k, t]) => `<button type="button" data-a="season" data-v="${k}" aria-pressed="${cur === k}"><span class="si">${t.icono}</span><b>${esc(t.nombre)}</b><small>${cap(MON[t.mes - 1])}</small></button>`).join('')}<button type="button" data-a="season" data-v="off" aria-pressed="${cur === 'off'}"><span class="si none" aria-hidden="true"></span><b>Sin ambientación</b><small>La app como siempre</small></button>`; })()}</div></section>
 <section class="card"><h2>App</h2>${installEvt ? '<button class="sb" data-a="install">Instalar la app</button>' : ''}
 <button class="sb" data-a="onbshow">Ver la introducción de Sprinty</button><button class="sb" data-a="export">Exportar todo (JSON)</button></section>
 <section class="card"><h2>Sesión</h2><button class="sb" data-a="logout">Cerrar sesión</button><button class="sb dng" data-a="delacc">Eliminar mi cuenta y mis datos</button></section>
@@ -789,6 +852,7 @@ function paint() {
   }
 }
 function render() {
+  applySeason();
   const V = { auth: vAuth, projects: vProjects, project: vProject, set: vSet };
   $('#v').innerHTML = (V[view] || vProjects)();
   if (full && !(view === 'project' && P() && tabOf(P()) === 'plan')) setFull(false, true);
@@ -851,7 +915,7 @@ function paintOnb() {
 ${last && none ? '<button class="btn" data-a="ofirst">Crear mi primer proyecto</button><button class="btn ghost" data-a="osample">Explorar un proyecto de ejemplo</button>' : `<button class="btn" data-a="onext">${last ? 'Empezar' : 'Siguiente'}</button>`}</div></div></div>`;
   root.querySelector('.btn')?.focus({ preventScroll: true });
 }
-function closeOnb() { onb = -1; L.onb = 1; saveL(); paintOnb(); }
+function closeOnb() { onb = -1; L.onb = 1; saveL(); paintOnb(); seasonStarted = false; seasonStart(); }
 
 /* ---------- Ventanas flotantes ---------- */
 function projForm(title, n, e, btn) {
@@ -1224,7 +1288,7 @@ async function doAuth() {
   busy = false; render();
 }
 function startView() {
-  loadInvites();
+  loadInvites(); setTimeout(seasonStart, 0);
   const last = D().last;
   if (last && proj(last)) { curP = last; go('project'); } else go('projects');
 }
@@ -1419,6 +1483,7 @@ const A = {
   cols() { openSheet({ t: 'cols' }); },
   colmv(b) { const p = P(), c = [...colsOf(p)], i = c.indexOf(b.dataset.k), j = i + +b.dataset.v; if (i < 0 || j < 0 || j >= c.length) return; [c[i], c[j]] = [c[j], c[i]]; upd('projects', p.id, { cols: c }); touch(); renderSheet(); paint(); },
   colreset() { const p = P(); upd('projects', p.id, { cols: [] }); touch(); renderSheet(); paint(); },
+  season(b) { D().season = b.dataset.v; D().seasonU = now(); touch(); applySeason(); render(); seasonFx(); },
   editname() { openSheet({ t: 'name' }); },
   syncnow() { if (!S.dirty) S.dirty = true; sync().then(ok => toast(ok ? 'Sincronizado ✓' : 'No se pudo sincronizar')); },
   theme(b) { L.theme = b.dataset.v; saveL(); applyTheme(); render(); },
@@ -1678,6 +1743,7 @@ async function roFetch() {
     const p = P(); if (p) Object.assign(p, roKeep);
     view = 'project';
     if (sheet || dragging || document.activeElement?.matches('input,select,textarea')) paintHeader(); else render();
+    seasonStart();
   } catch (_) { roErr = 'net'; paintHeader(); }
 }
 function renderGone() {
@@ -1702,6 +1768,7 @@ async function edFetch() {
     S.data = mergeState(S.data, r.data); curP = r.pr; edAt = Date.now(); edErr = ''; view = 'project';
     if (!P()) { edGoneScreen('Este proyecto ya no está disponible'); return; }
     if (sheet || dragging || document.activeElement?.matches('input,select,textarea')) paintHeader(); else render();
+    seasonStart();
   } catch (e) { edFail(e); }
 }
 async function edPush() {

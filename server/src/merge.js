@@ -32,6 +32,7 @@
                   (se combina por partes: avisos e iniciativas por separado, así varias personas pueden escribir a la vez)
      last, lastU                                    último proyecto abierto
      tabs, tabsU                                    orden de las pestañas del proyecto
+     season, seasonU                                ambientación elegida ('' = la del mes, 'off' = ninguna, o una temporada)
    } */
 
 const DAY = 86400000, TOMB_TTL = 30 * DAY;
@@ -47,6 +48,7 @@ const PRIOS = ['urg', 'high', 'mid', 'low', ''];
 const GRANS = ['m', 'q', 'w', 'd'];
 const shOk = s => typeof s === 'string' && /^[A-Za-z0-9]{20,40}$/.test(s);
 const COLKEYS = ['dl', 'st', 'p', 'tm', 'sp', 'plan', 'ln', 'no'];
+const SEASONS = ['verano', 'sanvalentin', 'otono', 'pascuas', 'patrio', 'invierno', 'vacaciones', 'infancias', 'primavera', 'halloween', 'tradicion', 'navidad'];
 const TABKEYS = ['inits', 'plan', 'sprints', 'cur', 'daily', 'teams', 'dash'];
 const ymOk = s => typeof s === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
 const linkOk = s => typeof s === 'string' && /^https?:\/\/\S+$/i.test(s.trim()) ? s.trim().slice(0, 500) : '';
@@ -63,7 +65,7 @@ function firstEmoji(s) {
   return isEmoji(g) ? g : '';
 }
 
-function emptyState() { return { name: '', nameU: 0, projects: {}, states: {}, teams: {}, inits: {}, blocks: {}, sprints: {}, dailies: {}, alerts: {}, shares: {}, last: '', lastU: 0, tabs: [], tabsU: 0 }; }
+function emptyState() { return { name: '', nameU: 0, projects: {}, states: {}, teams: {}, inits: {}, blocks: {}, sprints: {}, dailies: {}, alerts: {}, shares: {}, last: '', lastU: 0, tabs: [], tabsU: 0, season: '', seasonU: 0 }; }
 
 const isObj = x => x && typeof x === 'object';
 const col = c => COLORS.includes(c) ? c : 'gray';
@@ -201,6 +203,8 @@ function sanitizeState(d, now) {
   out.lastU = num(d.lastU);
   out.tabs = Array.isArray(d.tabs) ? [...new Set(d.tabs.filter(k => TABKEYS.includes(k)))] : [];
   out.tabsU = num(d.tabsU);
+  out.season = d.season === 'off' || SEASONS.includes(d.season) ? d.season : '';
+  out.seasonU = num(d.seasonU);
   return out;
 }
 
@@ -222,6 +226,8 @@ function mergeState(a, b, now) {
   out.shares = mergeMap(a.shares, b.shares, mergeShare);
   const wl = a.lastU >= b.lastU ? a : b;
   out.last = wl.last; out.lastU = wl.lastU;
+  const ws = a.seasonU >= b.seasonU ? a : b;
+  out.season = ws.season; out.seasonU = ws.seasonU;
   const wt = a.tabsU >= b.tabsU ? a : b;
   out.tabs = wt.tabs; out.tabsU = wt.tabsU;
   const wn = a.nameU >= b.nameU ? a : b;

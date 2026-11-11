@@ -1,0 +1,46 @@
+// Capturas de las 12 ambientaciones (escritorio y una en celular). Uso: node scripts/seasons-shots.mjs
+import http from 'node:http';
+import { readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { extname, join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+process.env.TZ = 'America/Buenos_Aires';
+import worker from '../server/src/index.js';
+const here = dirname(fileURLToPath(import.meta.url)), WEB = join(here, '..', 'web'), SHOTS = join(here, '..', '.shots');
+mkdirSync(SHOTS, { recursive: true });
+const require = createRequire(import.meta.url);
+const { chromium } = require(require.resolve('playwright', { paths: [here, '/opt/npm-tools/node_modules', '/usr/lib/node_modules', '/usr/local/lib/node_modules'] }));
+const store = new Map();
+const env = { SERVER_SECRET: 's-secret-largo', KV: { get: async k => store.get(k) ?? null, put: async (k, v) => { store.set(k, v); }, delete: async k => { store.delete(k); } } };
+const api = http.createServer(async (req, res) => { const c = []; for await (const x of req) c.push(x); const r = await worker.fetch(new Request('http://a' + req.url, { method: req.method, headers: req.headers, body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(c) }), env); res.writeHead(r.status, Object.fromEntries(r.headers)); res.end(Buffer.from(await r.arrayBuffer())); });
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
+let API = '';
+const web = http.createServer((req, res) => { let p = new URL(req.url, 'http://x').pathname; if (p === '/') p = '/index.html'; const f = join(WEB, p); if (!f.startsWith(WEB) || !existsSync(f)) { res.writeHead(404); return res.end(); } if (p === '/config.js') { res.writeHead(200, { 'Content-Type': 'text/javascript' }); return res.end(`window.TRAZO_CONFIG={API_URL:${JSON.stringify(API)}};`); } res.writeHead(200, { 'Content-Type': MIME[extname(f)] || 'application/octet-stream' }); res.end(readFileSync(f)); });
+const listen = s => new Promise(r => s.listen(0, '127.0.0.1', () => r(s.address().port)));
+const [ap, wp] = [await listen(api), await listen(web)]; API = `http://127.0.0.1:${ap}`; const APP = `http://127.0.0.1:${wp}/`;
+const browser = await chromium.launch(); const errors = [];
+const ctx = await browser.newContext({ viewport: { width: 1280, height: 760 }, locale: 'es-AR', timezoneId: 'America/Buenos_Aires' });
+const page = await ctx.newPage(); page.on('pageerror', e => errors.push(String(e)));
+await page.goto(APP); await page.waitForSelector('#af');
+await page.click('[data-m=signup]'); await page.fill('[data-au=name]', 'Taiel'); await page.fill('[data-au=email]', 's@test.com'); await page.fill('[data-au=pass]', 'clave-segura-1');
+await page.click('#af button[type=submit]'); await page.waitForSelector('.onb');
+for (let i = 0; i < 3; i++) await page.click('[data-a=onext]');
+await page.click('[data-a=osample]'); await page.waitForSelector('.blk');
+await page.waitForSelector('.swel', { timeout: 5000 });
+await page.waitForTimeout(1800);
+await page.screenshot({ path: join(SHOTS, 's-00-auto-bienvenida.png') });
+const keys = await page.evaluate(() => Object.keys(window.SPRINTY_SEASONS));
+for (const [n, k] of keys.entries()) {
+  await page.click('[data-a=go][data-v=set]');
+  await page.click(`[data-a=season][data-v=${k}]`);
+  await page.click('.back');
+  await page.click('.tabs [data-t=plan]');
+  await page.waitForTimeout(1600);
+  await page.screenshot({ path: join(SHOTS, `s-${String(n + 1).padStart(2, '0')}-${k}.png`), clip: { x: 0, y: 0, width: 1280, height: 420 } });
+}
+await page.click('[data-a=go][data-v=set]'); await page.waitForTimeout(200);
+await page.screenshot({ path: join(SHOTS, 's-13-ajustes.png'), fullPage: true });
+await page.click('[data-a=season][data-v=off]');
+const off = await page.evaluate(() => !document.documentElement.dataset.season && !document.querySelector('.sdeco'));
+console.log('sin ambientación quita todo:', off, '· errores:', errors.length ? errors : 'ninguno');
+await browser.close(); api.close(); web.close();
