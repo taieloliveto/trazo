@@ -308,7 +308,7 @@ function copyText(v) { (navigator.clipboard ? navigator.clipboard.writeText(v) :
 /* ---------- Ambientación del mes (configuración en seasons.js) ---------- */
 const SEAS = window.SPRINTY_SEASONS || {};
 const arMonth = () => { try { return +new Intl.DateTimeFormat('en-US', { timeZone: 'America/Argentina/Buenos_Aires', month: 'numeric' }).format(new Date()); } catch (_) { return new Date().getMonth() + 1; } };
-const autoSeason = () => Object.keys(SEAS).find(k => SEAS[k].mes === arMonth()) || '';
+const autoSeason = () => Object.keys(SEAS).find(k => SEAS[k].mes && SEAS[k].mes === arMonth()) || '';
 /* Por defecto, la del mes en Argentina; el dueño de la cuenta puede elegir otra o ninguna en Ajustes */
 const seasonKey = () => { const v = D().season; if (v === 'off') return ''; return SEAS[v] ? v : autoSeason(); };
 const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; } };
@@ -329,15 +329,21 @@ const seasonDeco = () => { const k = seasonKey(); return k ? `<span class="sdeco
 /* Microanimación breve y ocasional (nunca con movimiento reducido) */
 function seasonFx() {
   const k = seasonKey(); if (!k || reducedMotion() || document.hidden) return;
-  const pt = SEAS[k].particula; if (!pt) return;
+  const t = SEAS[k], groups = t.particulas || (t.particula ? [{ ...t.particula, svgs: [t.particula.svg] }] : []);
+  if (!groups.length) return;
   document.querySelector('.sfx')?.remove();
-  const box = document.createElement('div'); box.className = 'sfx sfx-' + pt.modo; box.setAttribute('aria-hidden', 'true');
-  for (let i = 0; i < pt.cantidad; i++) {
-    const e = document.createElement('i'), z = 10 + Math.random() * 12, top = ['brilla', 'vuela'].includes(pt.modo) ? `top:${(4 + Math.random() * 70).toFixed(1)}%;` : '';
-    e.style.cssText = `left:${(Math.random() * 100).toFixed(1)}%;${top}width:${z.toFixed(0)}px;height:${z.toFixed(0)}px;animation-delay:${(Math.random() * 3).toFixed(2)}s;animation-duration:${((pt.rapida ? 2.4 : 6) + Math.random() * 3).toFixed(2)}s;--r:${Math.round(Math.random() * 300 - 150)}deg;--dx:${Math.round(Math.random() * 90 - 45)}px;${pt.colores ? `filter:hue-rotate(${Math.round(Math.random() * 360)}deg);` : ''}`;
-    e.innerHTML = pt.svg; box.append(e);
+  const box = document.createElement('div'); box.className = 'sfx'; box.setAttribute('aria-hidden', 'true');
+  for (const g of groups) {
+    const [a, b] = g.tam || [10, 22], svgs = g.svgs || [];
+    for (let i = 0; i < (g.cantidad || 8); i++) {
+      const e = document.createElement('i'), z = a + Math.random() * (b - a), top = ['brilla', 'vuela'].includes(g.modo) ? `top:${(4 + Math.random() * 70).toFixed(1)}%;` : '';
+      e.className = 'm-' + (g.modo || 'cae');
+      e.style.cssText = `left:${(Math.random() * 100).toFixed(1)}%;${top}width:${z.toFixed(0)}px;height:${(g.modo === 'vuela' ? z / 2 : z).toFixed(0)}px;animation-delay:${(Math.random() * 3.5).toFixed(2)}s;animation-duration:${(6 + Math.random() * 3.5).toFixed(2)}s;--r:${Math.round(Math.random() * 300 - 150)}deg;--dx:${Math.round(Math.random() * 90 - 45)}px;`;
+      e.innerHTML = svgs[Math.floor(Math.random() * svgs.length)] || '';
+      box.append(e);
+    }
   }
-  document.body.append(box); setTimeout(() => box.remove(), 13500);
+  document.body.append(box); setTimeout(() => box.remove(), 14000);
 }
 /* Bienvenida chiquita la primera vez que se entra en un mes nuevo (no bloquea nada y se va sola) */
 function seasonWelcome() {
@@ -825,7 +831,7 @@ function vSet() {
 <button class="sb" data-a="editname">Cambiar mi nombre</button><button class="sb" data-a="syncnow">Sincronizar ahora</button></section>
 <section class="card"><h2>Apariencia</h2><div class="themesel" role="group" aria-label="Apariencia">${[['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Oscuro']].map(([k, n]) => `<button type="button" data-a="theme" data-v="${k}" aria-pressed="${(L.theme || 'auto') === k}">${n}</button>`).join('')}</div></section>
 <section class="card"><h2>Ambientación</h2><p class="mut small">Pequeños detalles según la época del año: una ilustración en el encabezado, un tono suave de fondo y alguna animación breve. Por defecto cambia sola cada mes.</p>
-<div class="sgrid" role="group" aria-label="Ambientación">${(() => { const a = autoSeason(), cur = D().season || ''; return `<button type="button" data-a="season" data-v="" aria-pressed="${cur === ''}"><span class="si">${a ? SEAS[a].icono : ''}</span><b>Automática</b><small>Este mes: ${a ? esc(SEAS[a].nombre) : '—'}</small></button>${Object.entries(SEAS).sort((x, y) => x[1].mes - y[1].mes).map(([k, t]) => `<button type="button" data-a="season" data-v="${k}" aria-pressed="${cur === k}"><span class="si">${t.icono}</span><b>${esc(t.nombre)}</b><small>${cap(MON[t.mes - 1])}</small></button>`).join('')}<button type="button" data-a="season" data-v="off" aria-pressed="${cur === 'off'}"><span class="si none" aria-hidden="true"></span><b>Sin ambientación</b><small>La app como siempre</small></button>`; })()}</div></section>
+<div class="sgrid" role="group" aria-label="Ambientación">${(() => { const a = autoSeason(), cur = D().season || ''; return `<button type="button" data-a="season" data-v="" aria-pressed="${cur === ''}"><span class="si">${a ? SEAS[a].icono : ''}</span><b>Automática</b><small>Este mes: ${a ? esc(SEAS[a].nombre) : '—'}</small></button>${Object.entries(SEAS).sort((x, y) => (x[1].mes || 13) - (y[1].mes || 13)).map(([k, t]) => `<button type="button" data-a="season" data-v="${k}" aria-pressed="${cur === k}"><span class="si">${t.icono}</span><b>${esc(t.nombre)}</b><small>${t.mes ? cap(MON[t.mes - 1]) : 'Cuando quieras'}</small></button>`).join('')}<button type="button" data-a="season" data-v="off" aria-pressed="${cur === 'off'}"><span class="si none" aria-hidden="true"></span><b>Sin ambientación</b><small>La app como siempre</small></button>`; })()}</div></section>
 <section class="card"><h2>App</h2>${installEvt ? '<button class="sb" data-a="install">Instalar la app</button>' : ''}
 <button class="sb" data-a="onbshow">Ver la introducción de Sprinty</button><button class="sb" data-a="export">Exportar todo (JSON)</button></section>
 <section class="card"><h2>Sesión</h2><button class="sb" data-a="logout">Cerrar sesión</button><button class="sb dng" data-a="delacc">Eliminar mi cuenta y mis datos</button></section>

@@ -35,7 +35,7 @@ for (const [n, k] of keys.entries()) {
   await page.click(`[data-a=season][data-v=${k}]`);
   await page.click('.back');
   await page.click('.tabs [data-t=plan]');
-  await page.waitForTimeout(1600);
+  await page.waitForTimeout(3400);
   await page.screenshot({ path: join(SHOTS, `s-${String(n + 1).padStart(2, '0')}-${k}.png`), clip: { x: 0, y: 0, width: 1280, height: 420 } });
 }
 await page.click('[data-a=go][data-v=set]'); await page.waitForTimeout(200);

@@ -783,7 +783,10 @@ a.pcard{text-decoration:none;color:inherit}
 :root[data-season] body{background-image:radial-gradient(900px 340px at 100% -60px,color-mix(in srgb,var(--season-tint) 12%,transparent),transparent 70%),radial-gradient(640px 260px at -8% -60px,color-mix(in srgb,var(--season-tint) 7%,transparent),transparent 70%);background-repeat:no-repeat;background-attachment:fixed}
 @media(prefers-color-scheme:dark){:root[data-season]:not([data-theme=light]) body{background-image:radial-gradient(900px 340px at 100% -60px,color-mix(in srgb,var(--season-tint) 9%,transparent),transparent 70%)}}
 :root[data-theme=dark][data-season] body{background-image:radial-gradient(900px 340px at 100% -60px,color-mix(in srgb,var(--season-tint) 9%,transparent),transparent 70%)}
-:root[data-season] #hd::after{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--season-strip-h,3px);background:var(--season-strip);opacity:.85;pointer-events:none}
+:root[data-season] #hd::after{content:"";position:absolute;left:0;right:0;top:100%;height:var(--season-strip-h,3px);background:var(--season-strip);pointer-events:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,.08))}
+:root[data-season] .page{padding-top:calc(22px + var(--season-strip-h,0px))}
+:root[data-season] .v-auth .page,:root[data-season] body.rmfull .page{padding-top:inherit}
+@media(max-width:700px){:root[data-season] .page{padding-top:calc(12px + var(--season-strip-h,0px))}}
 .sdeco{display:inline-grid;flex:none;width:22px;height:22px;margin-left:-6px;transform-origin:50% 90%;animation:sway 5s ease-in-out infinite}
 .sdeco svg{width:100%;height:100%;display:block}
 @keyframes sway{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(7deg)}}
@@ -796,13 +799,13 @@ a.pcard{text-decoration:none;color:inherit}
 .sfx{position:fixed;inset:0;z-index:35;pointer-events:none;overflow:hidden}
 .sfx i{position:absolute;display:block;opacity:0;animation-fill-mode:both;animation-timing-function:linear}
 .sfx i svg{width:100%;height:100%;display:block}
-.sfx-cae i{top:-30px;animation-name:sfall}
+.sfx i.m-cae{top:-30px;animation-name:sfall}
 @keyframes sfall{0%{transform:translate(0,0) rotate(0);opacity:0}10%{opacity:.85}85%{opacity:.7}100%{transform:translate(var(--dx),106vh) rotate(var(--r));opacity:0}}
-.sfx-sube i{top:auto;bottom:-40px;animation-name:srise;animation-timing-function:ease-out}
+.sfx i.m-sube{top:auto;bottom:-40px;animation-name:srise;animation-timing-function:ease-out}
 @keyframes srise{0%{transform:translate(0,0);opacity:0}12%{opacity:.8}80%{opacity:.6}100%{transform:translate(var(--dx),-106vh);opacity:0}}
-.sfx-brilla i{animation-name:stwink;animation-timing-function:ease-in-out}
+.sfx i.m-brilla{animation-name:stwink;animation-timing-function:ease-in-out}
 @keyframes stwink{0%,100%{transform:scale(.2) rotate(0);opacity:0}50%{transform:scale(1) rotate(var(--r));opacity:.9}}
-.sfx-vuela i{left:-40px!important;width:28px!important;height:14px!important;animation-name:sfly;animation-timing-function:ease-in-out}
+.sfx i.m-vuela{left:-40px!important;animation-name:sfly;animation-timing-function:ease-in-out}
 @keyframes sfly{0%{transform:translate(0,0);opacity:0}10%{opacity:.75}35%{transform:translate(35vw,-24px)}65%{transform:translate(70vw,8px)}90%{opacity:.7}100%{transform:translate(110vw,-12px);opacity:0}}
 /* bienvenida del mes */
 .swel{position:fixed;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:60;display:flex;align-items:center;gap:12px;max-width:min(380px,calc(100vw - 32px));padding:12px 10px 12px 12px;border-radius:18px;background:var(--card);border:1px solid var(--line);box-shadow:0 12px 32px rgba(0,0,0,.16);animation:swin .5s cubic-bezier(.2,.8,.2,1) both;transition:opacity .5s,transform .5s}
