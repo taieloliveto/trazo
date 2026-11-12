@@ -48,7 +48,7 @@ const PRIOS = ['urg', 'high', 'mid', 'low', ''];
 const GRANS = ['m', 'q', 'w', 'd'];
 const shOk = s => typeof s === 'string' && /^[A-Za-z0-9]{20,40}$/.test(s);
 const COLKEYS = ['dl', 'st', 'p', 'tm', 'sp', 'plan', 'ln', 'no'];
-const SEASONS = ['verano', 'sanvalentin', 'otono', 'pascuas', 'patrio', 'pride', 'invierno', 'vacaciones', 'infancias', 'primavera', 'halloween', 'tradicion', 'navidad'];
+const SEASONS = ['verano', 'sanvalentin', 'otono', 'pascuas', 'patrio', 'pride', 'arcade', 'vacaciones', 'infancias', 'primavera', 'halloween', 'tradicion', 'navidad'];
 const TABKEYS = ['inits', 'plan', 'sprints', 'cur', 'daily', 'teams', 'dash'];
 const ymOk = s => typeof s === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
 const linkOk = s => typeof s === 'string' && /^https?:\/\/\S+$/i.test(s.trim()) ? s.trim().slice(0, 500) : '';

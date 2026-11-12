@@ -338,7 +338,7 @@ function seasonFx() {
     for (let i = 0; i < (g.cantidad || 8); i++) {
       const e = document.createElement('i'), z = a + Math.random() * (b - a), top = ['brilla', 'vuela'].includes(g.modo) ? `top:${(4 + Math.random() * 70).toFixed(1)}%;` : '';
       e.className = 'm-' + (g.modo || 'cae');
-      e.style.cssText = `left:${(Math.random() * 100).toFixed(1)}%;${top}width:${z.toFixed(0)}px;height:${(g.modo === 'vuela' ? z / 2 : z).toFixed(0)}px;animation-delay:${(Math.random() * 3.5).toFixed(2)}s;animation-duration:${(6 + Math.random() * 3.5).toFixed(2)}s;--r:${Math.round(Math.random() * 300 - 150)}deg;--dx:${Math.round(Math.random() * 90 - 45)}px;`;
+      e.style.cssText = `left:${(Math.random() * 100).toFixed(1)}%;${top}width:${z.toFixed(0)}px;height:${(z * (g.ratio || (g.modo === 'vuela' ? .5 : 1))).toFixed(0)}px;animation-delay:${(Math.random() * 3.5).toFixed(2)}s;animation-duration:${(6 + Math.random() * 3.5).toFixed(2)}s;--r:${Math.round(Math.random() * 300 - 150)}deg;--dx:${Math.round(Math.random() * 90 - 45)}px;`;
       e.innerHTML = svgs[Math.floor(Math.random() * svgs.length)] || '';
       box.append(e);
     }
