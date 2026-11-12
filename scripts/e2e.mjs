@@ -537,6 +537,20 @@ await step('compartir: link de solo lectura que se actualiza', async () => {
   await v.waitForTimeout(300);
   assert.equal(await v.locator('.sh[data-f=block] button[type=submit]:visible').count(), 0, 'no se puede editar el plazo');
   await v.keyboard.press('Escape');
+  // probar otra ambientación desde el link: se ve al instante y no se guarda
+  const seasonOwner = (await data(page)).season || '';
+  await v.click('[data-a=seas]'); await v.waitForSelector('.sh [data-a=spick]');
+  await v.click('.sh [data-a=spick][data-v=arcade]');
+  await v.waitForFunction(() => document.documentElement.dataset.season === 'arcade');
+  assert.ok(await v.locator('.sh [data-a=spick][data-v=arcade][aria-pressed=true]').count(), 'queda marcada');
+  await v.screenshot({ path: join(SHOTS, '22c-compartido-ambientacion.png') });
+  await v.click('.sh [data-a=spick][data-v=off]');
+  await v.waitForFunction(() => !document.documentElement.dataset.season);
+  await v.click('.sh [data-a=spick][data-v=navidad]');
+  await v.waitForFunction(() => document.documentElement.dataset.season === 'navidad');
+  await v.click('.sh [data-a=close]');
+  await v.waitForTimeout(1500);
+  assert.equal((await data(page)).season || '', seasonOwner, 'no cambia la del dueño');
   await v.click('[data-a=gran][data-v=d]');      // cambiar la vista sí se puede (solo para quien mira)
   await v.waitForSelector('#rm.g-d');
   await v.click('.tabs [data-t=cur]'); await v.waitForSelector('.rep');

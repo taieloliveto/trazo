@@ -836,3 +836,18 @@ a.pcard{text-decoration:none;color:inherit}
 .rm::-webkit-scrollbar-thumb,.hmw::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--mut) 55%,var(--line2));border-radius:99px;border:3px solid var(--line2)}
 .rm::-webkit-scrollbar-thumb:hover,.hmw::-webkit-scrollbar-thumb:hover{background:var(--mut)}
 .rm::-webkit-scrollbar-corner{background:var(--line2)}
+
+/* Elegir ambientación desde un link compartido (solo en esa pantalla) */
+.sbtn{display:inline-flex;align-items:center;gap:5px}
+.sbtn .sbi{font-size:.95rem;line-height:1}
+.seasr{display:flex;align-items:center;gap:12px;text-align:left}
+.seasr .si{flex:none;width:28px;height:28px;display:grid;place-items:center}
+.seasr .si svg{width:100%;height:100%}
+.seasr .si.none{border:2px dashed var(--line);border-radius:50%;width:24px;height:24px}
+.seasr .sn{display:flex;flex-direction:column;flex:1;min-width:0}
+.seasr .sn small{color:var(--mut);font-weight:500}
+.seasr[aria-pressed=true]{background:var(--acc-soft)}
+@media (max-width:640px){.sbtn .sbl{display:none}.sbtn{padding-inline:8px}}
+.shint{margin:-4px 0 10px;font-size:.88rem}
+.ov:has(.seash){background:rgba(6,12,9,.12)}
+@media (min-width:900px){.ov:has(.seash){justify-content:flex-end;padding-right:24px}}

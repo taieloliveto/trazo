@@ -310,7 +310,10 @@ const SEAS = window.SPRINTY_SEASONS || {};
 const arMonth = () => { try { return +new Intl.DateTimeFormat('en-US', { timeZone: 'America/Argentina/Buenos_Aires', month: 'numeric' }).format(new Date()); } catch (_) { return new Date().getMonth() + 1; } };
 const autoSeason = () => Object.keys(SEAS).find(k => SEAS[k].mes && SEAS[k].mes === arMonth()) || '';
 /* Por defecto, la del mes en Argentina; el dueño de la cuenta puede elegir otra o ninguna en Ajustes */
-const seasonKey = () => { const v = D().season; if (v === 'off') return ''; return SEAS[v] ? v : autoSeason(); };
+/* Quien mira por link (o edita sin ser dueño) puede probar otras ambientaciones solo en su pantalla: no se guarda */
+let seasonLocal = null;
+const seasonKey = () => { const v = seasonLocal !== null ? seasonLocal : D().season; if (v === 'off') return ''; return SEAS[v] ? v : autoSeason(); };
+const seasonKeyOwn = () => { const v = D().season; if (v === 'off') return ''; return SEAS[v] ? v : autoSeason(); };
 const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; } };
 let seasonOn = null;
 function applySeason() {
@@ -378,8 +381,8 @@ function paintHeader0() {
   if (view === 'auth') { h.hidden = true; return; }
   h.hidden = false;
   const p = P();
-  if (EDIT) { h.innerHTML = `<div class="hd-in">${S.token ? `<a class="brand" href="./" aria-label="Ir a mis proyectos">` : '<span class="brand">'}<span class="logo sm">${LOGO}</span><b>Sprinty</b>${S.token ? '</a>' : '</span>'}${p ? `<span class="crumb" aria-hidden="true">/</span><button class="psw" data-a="pmenu" aria-label="Opciones del proyecto"><span class="pn">${nm(p)}</span>${I_DOWN}</button>` : ''}<span class="grow"></span><span class="rob ed" title="Estás editando un proyecto compartido con vos. Los cambios se guardan solos.">✎ Editando</span><span class="sy ${edErr ? 'err' : edDirty || edBusy ? 'pend' : 'ok'}" role="status">${edErr ? 'Sin conexión' : edDirty || edBusy ? 'Guardando…' : edAt ? 'Guardado ' + hm(edAt) : 'Cargando…'}</span></div>`; return; }
-  if (RO) { h.innerHTML = `<div class="hd-in"><span class="brand"><span class="logo sm">${LOGO}</span><b>Sprinty</b></span>${p ? `<span class="crumb" aria-hidden="true">/</span><span class="psw ro"><span class="pn">${nm(p)}</span></span>` : ''}<span class="grow"></span>${p ? '<button class="mini" data-a="rqedit">✎ Pedir permiso de edición</button>' : ''}<span class="rob" title="Estás viendo un proyecto compartido. Se actualiza solo.">👁 Solo lectura</span><span class="sy ${roErr ? 'err' : roDirty.size || roBusy ? 'pend' : 'ok'}" role="status">${roErr ? 'Sin conexión' : roDirty.size || roBusy ? 'Guardando…' : roAt ? 'Actualizado ' + hm(roAt) : 'Cargando…'}</span></div>`; return; }
+  if (EDIT) { h.innerHTML = `<div class="hd-in">${S.token ? `<a class="brand" href="./" aria-label="Ir a mis proyectos">` : '<span class="brand">'}<span class="logo sm">${LOGO}</span><b>Sprinty</b>${S.token ? '</a>' : '</span>'}${p ? `<span class="crumb" aria-hidden="true">/</span><button class="psw" data-a="pmenu" aria-label="Opciones del proyecto"><span class="pn">${nm(p)}</span>${I_DOWN}</button>` : ''}<span class="grow"></span>${p ? `<button class="mini sbtn" data-a="seas" aria-label="Elegir ambientación" title="Probá otra ambientación (solo en tu pantalla)"><span class="sbi" aria-hidden="true">🎨</span><span class="sbl">Ambientación</span></button>` : ''}<span class="rob ed" title="Estás editando un proyecto compartido con vos. Los cambios se guardan solos.">✎ Editando</span><span class="sy ${edErr ? 'err' : edDirty || edBusy ? 'pend' : 'ok'}" role="status">${edErr ? 'Sin conexión' : edDirty || edBusy ? 'Guardando…' : edAt ? 'Guardado ' + hm(edAt) : 'Cargando…'}</span></div>`; return; }
+  if (RO) { h.innerHTML = `<div class="hd-in"><span class="brand"><span class="logo sm">${LOGO}</span><b>Sprinty</b></span>${p ? `<span class="crumb" aria-hidden="true">/</span><span class="psw ro"><span class="pn">${nm(p)}</span></span>` : ''}<span class="grow"></span>${p ? `<button class="mini sbtn" data-a="seas" aria-label="Elegir ambientación" title="Probá otra ambientación (solo en tu pantalla)"><span class="sbi" aria-hidden="true">🎨</span><span class="sbl">Ambientación</span></button>` : ''}${p ? '<button class="mini" data-a="rqedit">✎ Pedir permiso de edición</button>' : ''}<span class="rob" title="Estás viendo un proyecto compartido. Se actualiza solo.">👁 Solo lectura</span><span class="sy ${roErr ? 'err' : roDirty.size || roBusy ? 'pend' : 'ok'}" role="status">${roErr ? 'Sin conexión' : roDirty.size || roBusy ? 'Guardando…' : roAt ? 'Actualizado ' + hm(roAt) : 'Cargando…'}</span></div>`; return; }
   h.innerHTML = `<div class="hd-in"><button class="brand" data-a="go" data-v="projects" aria-label="Ir a mis proyectos"><span class="logo sm">${LOGO}</span><b>Sprinty</b></button>
 ${view === 'project' && p ? `<span class="crumb" aria-hidden="true">/</span><button class="psw" data-a="pswitch" aria-label="Cambiar de proyecto"><span class="pn">${nm(p)}</span>${I_DOWN}</button>` : ''}
 <span class="grow"></span>${view === 'project' && p ? (() => { const x = shareOf(p.id), on = x.sh || x.se || x.eds.length, rq = x.rq.length; return `<button class="mini shb${on ? ' on' : ''}" data-a="share" aria-label="Compartir proyecto${rq ? ` (${rq} pedidos de edición)` : ''}">${I_SHARE}<span>${on ? 'Compartido' : 'Compartir'}</span>${rq ? `<i class="nb">${rq}</i>` : ''}</button>`; })() : ''}${syncBadge()}<button class="icon" data-a="go" data-v="set" aria-label="Ajustes"${view === 'set' ? ' aria-current="page"' : ''}>${I_GEAR}</button></div>`;
@@ -1002,6 +1005,9 @@ function sheetHtml() {
     case 'newproj': return projForm('Nuevo proyecto', '', '🧭', 'Crear proyecto');
     case 'editproj': return projForm('Editar proyecto', p?.n || '', p?.e || '', 'Guardar');
     case 'pswitch': return `<div class="sh" role="dialog" aria-modal="true" aria-label="Cambiar de proyecto"><h2>Proyectos</h2>${projects().map(x => `<button class="rowb" data-a="openp" data-id="${esc(x.id)}"><span>${nm(x)}</span>${x.id === curP ? '<span class="ck">✓</span>' : ''}</button>`).join('')}<button class="rowb acc" data-a="newproj">+ Nuevo proyecto</button><button class="rowb" data-a="go" data-v="projects">Ver todos los proyectos</button><button class="rowb" data-a="pmenu">Opciones de este proyecto…</button></div>`;
+    case 'seas': { const own = D().season, cur = seasonLocal === null ? 'own' : seasonLocal, ownName = own === 'off' ? 'Sin ambientación' : SEAS[own] ? SEAS[own].nombre : (autoSeason() ? SEAS[autoSeason()].nombre : 'Sin ambientación');
+      const row = (v, ic, n, sub) => `<button class="rowb seasr" data-a="spick" data-v="${v}" aria-pressed="${cur === v}"><span class="si${ic ? '' : ' none'}" aria-hidden="true">${ic}</span><span class="sn"><b>${esc(n)}</b><small>${esc(sub)}</small></span>${cur === v ? '<span class="ck">✓</span>' : ''}</button>`;
+      return `<div class="sh seash" role="dialog" aria-modal="true" aria-label="Ambientación"><h2>Ambientación</h2><p class="mut shint">Probá las opciones: el cambio se ve solo en tu pantalla y no se guarda.</p>${row('own', (SEAS[seasonKeyOwn()] || {}).icono || '', 'La del proyecto', ownName)}${Object.entries(SEAS).sort((x, y) => (x[1].mes || 13) - (y[1].mes || 13)).map(([k, t]) => row(k, t.icono, t.nombre, t.mes ? cap(MON[t.mes - 1]) : 'Cuando quieras')).join('')}${row('off', '', 'Sin ambientación', 'La app como siempre')}<button class="btn ghost" data-a="close">Listo</button></div>`; }
     case 'pmenu': return `<div class="sh" role="dialog" aria-modal="true" aria-label="Opciones del proyecto"><h2>${p ? nm(p) : 'Proyecto'}</h2><button class="rowb" data-a="pedit">Editar nombre y emoji</button><button class="rowb" data-a="states">Editar estados</button><button class="rowb" data-a="share">Compartir (solo lectura)</button><button class="rowb" data-a="csv">Exportar iniciativas (Excel / CSV)</button><button class="rowb dng" data-a="pdel">Eliminar proyecto</button></div>`;
     case 'init': return initSheet();
     case 'block': return blockSheet();
@@ -1054,7 +1060,7 @@ function renderSheet() {
   o.addEventListener('mousedown', e => { if (e.target === o && now() - t0 > 450) closeSheet(); });
   root.append(o);
   d.scrollTop = keep;
-  if (RO && sheet.t !== 'rq') {
+  if (RO && sheet.t !== 'rq' && sheet.t !== 'seas') {
     d.querySelectorAll('input,select,textarea').forEach(x => { x.disabled = true; });
     d.querySelectorAll('button[type=submit],.btn.danger,[data-a=alv]:not([aria-pressed=true]),[data-a=badd],[data-a=bteamnew],[data-a=bteamadd],[data-a=bteam],[data-a=pickcol],[data-a=tgmv],[data-a=tgdel],.tga').forEach(x => { x.hidden = true; });
     const c = d.querySelector('[data-a=close]'); if (c) c.textContent = 'Cerrar';
@@ -1352,6 +1358,8 @@ const A = {
   openp(b) { sheet = null; openProject(b.dataset.id); },
   pswitch() { openSheet({ t: 'pswitch' }); },
   pmenu() { openSheet({ t: 'pmenu' }); },
+  seas() { openSheet({ t: 'seas' }); },
+  spick(b) { seasonLocal = b.dataset.v === 'own' ? null : b.dataset.v; applySeason(); paintHeader(); renderSheet(); seasonFx(); },
   pcshare(b) { curP = b.dataset.id; A.share(); },
   pcmenu(b) { if (!proj(b.dataset.id)) return; curP = b.dataset.id; openSheet({ t: 'pmenu' }); },
   full() { setFull(!full); },
@@ -1629,7 +1637,7 @@ document.addEventListener('keydown', e => {
 function refreshTags() { if (sheet && sheet.t === 'states') renderSheet(); else render(); }
 /* Quien edita por link o invitación no puede borrar el proyecto, cambiar cómo se comparte ni salir a otras pantallas */
 const EDIT_NO = new Set(['pdel', 'share', 'shon', 'seon', 'shoff', 'seoff', 'edrm', 'rqok', 'rqno', 'go', 'back', 'pswitch', 'pcmenu', 'pcshare', 'newproj', 'sample', 'openp', 'editname', 'logout', 'delacc', 'export', 'onbshow', 'install', 'syncnow']);
-const RO_OK = new Set(['hidedone', 'rqedit', 'dnew', 'dedit', 'dsave', 'dcancel', 'yes', 'ptab', 'flt', 'gran', 'gb', 'rmnav', 'rmtoday', 'full', 'dwn', 'dwnav', 'iopen', 'bopen', 'spedit', 'close', 'theme']);
+const RO_OK = new Set(['hidedone', 'rqedit', 'dnew', 'dedit', 'dsave', 'dcancel', 'yes', 'ptab', 'flt', 'gran', 'gb', 'rmnav', 'rmtoday', 'full', 'dwn', 'dwnav', 'iopen', 'bopen', 'spedit', 'close', 'theme', 'seas', 'spick']);
 document.addEventListener('click', e => {
   const blk = e.target.closest('.blk');
   if (blk && e.detail === 0) { blk.dataset.kind === 'alerts' ? openAlert(blk.dataset.b) : openBlock(blk.dataset.b); return; }     // Enter o espacio sobre un plazo
